@@ -10,19 +10,54 @@ class RoomCard extends StatefulWidget {
   const RoomCard({
     super.key,
     required this.room,
+    required this.isSaved,
   });
 
   final RoomModel room;
+  final bool isSaved;
 
   @override
   State<RoomCard> createState() => _RoomCardState();
 }
 
 class _RoomCardState extends State<RoomCard> {
+  final SavedRoomsService _savedRoomsService = SavedRoomsService();
+  bool _isWriting = false;
+  bool? _savedOverride;
+
+  @override
+  void didUpdateWidget(covariant RoomCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_savedOverride == widget.isSaved) _savedOverride = null;
+  }
+
+  Future<void> _toggleSaved() async {
+    if (_isWriting) return;
+    final wasSaved = _savedOverride ?? widget.isSaved;
+    setState(() => _isWriting = true);
+    try {
+      await _savedRoomsService.toggleSavedRoom(
+        widget.room.id,
+        isCurrentlySaved: wasSaved,
+      );
+      if (mounted) setState(() => _savedOverride = !wasSaved);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlySavedRoomError(error)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isWriting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final room = widget.room;
-    final isSaved = SavedRoomsService.isSaved(room);
+    final isSaved = _savedOverride ?? widget.isSaved;
 
     return GestureDetector(
       onTap: () {
@@ -108,13 +143,19 @@ class _RoomCardState extends State<RoomCard> {
               ),
             ),
             IconButton(
-              onPressed: () {
-                setState(() => SavedRoomsService.toggleSave(room));
-              },
-              icon: Icon(
-                isSaved ? Icons.favorite : Icons.favorite_border,
-                color: isSaved ? const Color(0xFFE6506E) : AppColors.textMuted,
-              ),
+              onPressed: _isWriting ? null : _toggleSaved,
+              icon: _isWriting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      isSaved ? Icons.favorite : Icons.favorite_border,
+                      color: isSaved
+                          ? const Color(0xFFE6506E)
+                          : AppColors.textMuted,
+                    ),
             ),
           ],
         ),

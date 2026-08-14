@@ -8,6 +8,7 @@ import '../widgets/category_item.dart';
 import '../widgets/popular_areas.dart';
 import '../widgets/room_card.dart';
 import '../services/room_service.dart';
+import '../services/saved_rooms_service.dart';
 import 'search_screen.dart';
 import 'saved_screen.dart';
 import 'profile_screen.dart';
@@ -171,11 +172,13 @@ class _RecommendedRooms extends StatefulWidget {
 
 class _RecommendedRoomsState extends State<_RecommendedRooms> {
   late final Stream<List<RoomModel>> _roomsStream;
+  late final Stream<Set<String>> _savedRoomIdsStream;
 
   @override
   void initState() {
     super.initState();
     _roomsStream = RoomService().watchAvailableRooms();
+    _savedRoomIdsStream = SavedRoomsService().watchSavedRoomIds();
   }
 
   @override
@@ -193,11 +196,34 @@ class _RecommendedRoomsState extends State<_RecommendedRooms> {
           );
         }
 
-        final rooms = snapshot.data ?? const <RoomModel>[];
-        if (rooms.isEmpty) return const Text('No rooms available yet');
+        return StreamBuilder<Set<String>>(
+          stream: _savedRoomIdsStream,
+          builder: (context, savedSnapshot) {
+            if (savedSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (savedSnapshot.hasError) {
+              return const Text(
+                'Saved-room status could not be loaded. Please try again.',
+                style: TextStyle(color: Colors.red),
+              );
+            }
 
-        return Column(
-          children: rooms.take(3).map((room) => RoomCard(room: room)).toList(),
+            final rooms = snapshot.data ?? const <RoomModel>[];
+            if (rooms.isEmpty) return const Text('No rooms available yet');
+            final savedRoomIds = savedSnapshot.data ?? const <String>{};
+            return Column(
+              children: rooms
+                  .take(3)
+                  .map(
+                    (room) => RoomCard(
+                      room: room,
+                      isSaved: savedRoomIds.contains(room.id),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
         );
       },
     );

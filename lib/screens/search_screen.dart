@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/room_model.dart';
 import '../widgets/room_card.dart';
 import '../services/room_service.dart';
+import '../services/saved_rooms_service.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialLocation;
@@ -20,12 +21,14 @@ class _SearchScreenState extends State<SearchScreen> {
   String selectedPrice = "Price";
   String selectedGender = "Gender";
   late final Stream<List<RoomModel>> _roomsStream;
+  late final Stream<Set<String>> _savedRoomIdsStream;
 
   @override
   void initState() {
     super.initState();
     selectedLocation = widget.initialLocation ?? "Location";
     _roomsStream = RoomService().watchAvailableRooms();
+    _savedRoomIdsStream = SavedRoomsService().watchSavedRoomIds();
   }
 
   List<RoomModel> _filteredRooms(List<RoomModel> rooms) {
@@ -189,69 +192,89 @@ class _SearchScreenState extends State<SearchScreen> {
             );
           }
 
-          final results = _filteredRooms(snapshot.data ?? const []);
-          return ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              const _SearchInput(),
-              const SizedBox(height: 16),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _FilterChipButton(
-                      icon: Icons.location_on_outlined,
-                      label: selectedLocation,
-                      onTap: _selectLocation,
-                    ),
-                    const SizedBox(width: 10),
-                    _FilterChipButton(
-                      icon: Icons.payments_outlined,
-                      label: selectedPrice,
-                      onTap: _selectPrice,
-                    ),
-                    const SizedBox(width: 10),
-                    _FilterChipButton(
-                      icon: Icons.people_outline,
-                      label: selectedGender,
-                      onTap: _selectGender,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() {});
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text("Refresh Results"),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          return StreamBuilder<Set<String>>(
+            stream: _savedRoomIdsStream,
+            builder: (context, savedSnapshot) {
+              if (savedSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (savedSnapshot.hasError) {
+                return const Center(
+                  child: Text('Saved-room status could not be loaded.'),
+                );
+              }
+
+              final results = _filteredRooms(snapshot.data ?? const []);
+              final savedRoomIds = savedSnapshot.data ?? const <String>{};
+              return ListView(
+                padding: const EdgeInsets.all(20),
                 children: [
-                  Text(
-                    "${results.length} rooms found",
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                  const _SearchInput(),
+                  const SizedBox(height: 16),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _FilterChipButton(
+                          icon: Icons.location_on_outlined,
+                          label: selectedLocation,
+                          onTap: _selectLocation,
+                        ),
+                        const SizedBox(width: 10),
+                        _FilterChipButton(
+                          icon: Icons.payments_outlined,
+                          label: selectedPrice,
+                          onTap: _selectPrice,
+                        ),
+                        const SizedBox(width: 10),
+                        _FilterChipButton(
+                          icon: Icons.people_outline,
+                          label: selectedGender,
+                          onTap: _selectGender,
+                        ),
+                      ],
+                    ),
                   ),
-                  TextButton(
-                    onPressed: _clearFilters,
-                    child: const Text("Clear"),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Refresh Results"),
+                    ),
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "${results.length} rooms found",
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton(
+                        onPressed: _clearFilters,
+                        child: const Text("Clear"),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (results.isEmpty)
+                    const _EmptyResult()
+                  else
+                    ...results.map(
+                      (room) => RoomCard(
+                        room: room,
+                        isSaved: savedRoomIds.contains(room.id),
+                      ),
+                    ),
                 ],
-              ),
-              const SizedBox(height: 10),
-              if (results.isEmpty)
-                const _EmptyResult()
-              else
-                ...results.map((room) => RoomCard(room: room)),
-            ],
+              );
+            },
           );
         },
       ),

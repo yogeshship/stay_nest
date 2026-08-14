@@ -20,7 +20,6 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int savedCount = SavedRoomsService.savedRooms.length;
     final int inquiryCount = InquiryService.inquiries
         .where((inquiry) => inquiry.isVisibleToCustomer)
         .length;
@@ -50,10 +49,7 @@ class ProfileScreen extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _ProfileStatCard(
-                  title: "Saved",
-                  value: savedCount.toString(),
-                ),
+                child: _SavedRoomCount(),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -151,6 +147,34 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SavedRoomCount extends StatefulWidget {
+  @override
+  State<_SavedRoomCount> createState() => _SavedRoomCountState();
+}
+
+class _SavedRoomCountState extends State<_SavedRoomCount> {
+  late final Stream<Set<String>> _savedRoomIdsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _savedRoomIdsStream = SavedRoomsService().watchSavedRoomIds();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Set<String>>(
+      stream: _savedRoomIdsStream,
+      builder: (context, snapshot) {
+        return _ProfileStatCard(
+          title: 'Saved',
+          value: snapshot.hasError ? '—' : '${snapshot.data?.length ?? 0}',
+        );
+      },
     );
   }
 }

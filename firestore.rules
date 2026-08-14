@@ -45,7 +45,8 @@ service cloud.firestore {
     match /rooms/{roomId} {
       allow read: if isSignedIn()
         && (resource.data.isAvailable == true
-          || resource.data.ownerId == request.auth.uid);
+          || resource.data.ownerId == request.auth.uid
+          || hasSavedRoom(roomId));
 
       allow create: if isActiveOwner()
         && request.resource.data.keys().hasOnly([
@@ -88,6 +89,32 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
+    match /savedRooms/{saveId} {
+      allow read: if isActiveCustomer()
+        && resource.data.customerId == request.auth.uid;
+
+      allow create: if isActiveCustomer()
+        && request.resource.data.keys().hasOnly([
+          'customerId',
+          'roomId',
+          'savedAt'
+        ])
+        && request.resource.data.customerId == request.auth.uid
+        && request.resource.data.roomId is string
+        && request.resource.data.roomId.size() > 0
+        && request.resource.data.savedAt == request.time
+        && saveId == request.auth.uid + '_' + request.resource.data.roomId
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.isAvailable == true;
+
+      allow update: if false;
+
+      allow delete: if isActiveCustomer()
+        && resource.data.customerId == request.auth.uid
+        && resource.data.roomId is string
+        && saveId == resource.data.customerId + '_' + resource.data.roomId;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -101,6 +128,18 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    function isActiveCustomer() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    function hasSavedRoom(roomId) {
+      return isActiveCustomer()
+        && exists(/databases/$(database)/documents/savedRooms/$(request.auth.uid + '_' + roomId));
     }
 
     function hasValidRoomFields(data) {
