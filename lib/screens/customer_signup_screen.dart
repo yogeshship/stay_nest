@@ -1,11 +1,61 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
+import '../services/auth_service.dart';
 import 'home_screen.dart';
 
-class CustomerSignupScreen extends StatelessWidget {
+class CustomerSignupScreen extends StatefulWidget {
   const CustomerSignupScreen({super.key});
 
+  @override
+  State<CustomerSignupScreen> createState() => _CustomerSignupScreenState();
+}
+
+class _CustomerSignupScreenState extends State<CustomerSignupScreen> {
   static const Color primaryColor = Color(0xFF6C3BFF);
   static const Color bgColor = Color(0xFFF8F7FC);
+
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _authService = AuthService();
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signUp() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      await _authService.signUpWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    } on FirebaseAuthException catch (error) {
+      if (mounted) _showError(friendlyAuthError(error));
+    } finally {
+      _passwordController.clear();
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,71 +71,69 @@ class CustomerSignupScreen extends StatelessWidget {
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Create Customer Account",
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Sign up to search, save, and contact room owners.",
-                style: TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 28),
-
-              const _SignupField(label: "Full Name", hint: "Enter your name"),
-              const SizedBox(height: 14),
-
-              const _SignupField(label: "Phone Number", hint: "98XXXXXXXX"),
-              const SizedBox(height: 14),
-
-              const _SignupField(label: "College Name", hint: "e.g. Islington College"),
-              const SizedBox(height: 14),
-
-              const _SignupField(
-                label: "Password",
-                hint: "Create password",
-                obscureText: true,
-              ),
-
-              const SizedBox(height: 26),
-
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Customer account created"),
-                        backgroundColor: primaryColor,
-                      ),
-                    );
-
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HomeScreen(),
-                      ),
-                    );
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Create Customer Account',
+                    style:
+                        TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                const Text('Sign up to search, save, and contact room owners.',
+                    style: TextStyle(color: Colors.black54)),
+                const SizedBox(height: 28),
+                _SignupField(
+                  controller: _emailController,
+                  label: 'Email',
+                  hint: 'you@example.com',
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Please enter your email.'
+                      : null,
+                ),
+                const SizedBox(height: 14),
+                _SignupField(
+                  controller: _passwordController,
+                  label: 'Password',
+                  hint: 'Create password',
+                  obscureText: true,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please create a password.';
+                    }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters.';
+                    }
+                    return null;
                   },
-                  child: const Text(
-                    "Create Account",
-                    style: TextStyle(color: Colors.white),
+                  onSubmitted: (_) => _signUp(),
+                ),
+                const SizedBox(height: 26),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                    onPressed: _isSubmitting ? null : _signUp,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Create Account',
+                            style: TextStyle(color: Colors.white)),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 40),
-            ],
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),
@@ -94,15 +142,23 @@ class CustomerSignupScreen extends StatelessWidget {
 }
 
 class _SignupField extends StatelessWidget {
-  final String label;
-  final String hint;
-  final bool obscureText;
-
   const _SignupField({
+    required this.controller,
     required this.label,
     required this.hint,
+    required this.validator,
+    this.keyboardType,
     this.obscureText = false,
+    this.onSubmitted,
   });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final FormFieldValidator<String> validator;
+  final TextInputType? keyboardType;
+  final bool obscureText;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   Widget build(BuildContext context) {
@@ -111,8 +167,14 @@ class _SignupField extends StatelessWidget {
       children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
+          controller: controller,
+          keyboardType: keyboardType,
           obscureText: obscureText,
+          autocorrect: false,
+          enableSuggestions: !obscureText,
+          validator: validator,
+          onFieldSubmitted: onSubmitted,
           decoration: InputDecoration(
             hintText: hint,
             filled: true,

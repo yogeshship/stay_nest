@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../services/auth_service.dart';
 import '../services/saved_rooms_service.dart';
 import '../services/inquiry_service.dart';
 import 'saved_screen.dart';
@@ -40,27 +43,21 @@ class ProfileScreen extends StatelessWidget {
             backgroundColor: primaryColor,
             child: Icon(Icons.person, size: 48, color: Colors.white),
           ),
-
           const SizedBox(height: 14),
-
           const Center(
             child: Text(
               "Customer User",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
           ),
-
           const SizedBox(height: 4),
-
           const Center(
             child: Text(
               "Looking for verified student rooms",
               style: TextStyle(color: Colors.black54),
             ),
           ),
-
           const SizedBox(height: 24),
-
           Row(
             children: [
               Expanded(
@@ -78,9 +75,7 @@ class ProfileScreen extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 24),
-
           _ProfileOption(
             icon: Icons.favorite_border,
             title: "Saved Rooms",
@@ -92,7 +87,6 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _ProfileOption(
             icon: Icons.chat_bubble_outline,
             title: "Messages",
@@ -104,7 +98,6 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _ProfileOption(
             icon: Icons.person_search_outlined,
             title: "My Room Requests",
@@ -118,7 +111,6 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _ProfileOption(
             icon: Icons.verified_user_outlined,
             title: "Trust & Verification",
@@ -132,7 +124,6 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _ProfileOption(
             icon: Icons.help_outline,
             title: "Help & Support",
@@ -146,19 +137,27 @@ class ProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _ProfileOption(
             icon: Icons.logout,
             title: "Logout",
             subtitle: "Sign out from your account",
-            onTap: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const WelcomeScreen(),
-                ),
-                    (route) => false,
-              );
+            onTap: () async {
+              try {
+                await AuthService().signOut();
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WelcomeScreen(),
+                  ),
+                  (route) => false,
+                );
+              } on FirebaseAuthException catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(friendlyAuthError(error))),
+                );
+              }
             },
           ),
         ],

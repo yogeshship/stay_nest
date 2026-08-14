@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import '../services/auth_service.dart';
 import '../services/room_data_service.dart';
 import '../services/inquiry_service.dart';
 import 'my_listings_screen.dart';
@@ -36,27 +39,21 @@ class OwnerProfileScreen extends StatelessWidget {
             backgroundColor: primaryColor,
             child: Icon(Icons.person, size: 48, color: Colors.white),
           ),
-
           const SizedBox(height: 14),
-
           const Center(
             child: Text(
-              "Verified Owner",
+              "Owner Account",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
           ),
-
           const SizedBox(height: 4),
-
           const Center(
             child: Text(
-              "Approved by StayNest team",
+              "Role verification will be added in a later phase",
               style: TextStyle(color: Colors.black54),
             ),
           ),
-
           const SizedBox(height: 24),
-
           Row(
             children: [
               Expanded(
@@ -74,9 +71,7 @@ class OwnerProfileScreen extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 24),
-
           _OwnerProfileOption(
             icon: Icons.home_work_outlined,
             title: "My Listings",
@@ -84,11 +79,11 @@ class OwnerProfileScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const MyListingsScreen()),
+                MaterialPageRoute(
+                    builder: (context) => const MyListingsScreen()),
               );
             },
           ),
-
           _OwnerProfileOption(
             icon: Icons.chat_bubble_outline,
             title: "Inquiries",
@@ -96,17 +91,16 @@ class OwnerProfileScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const InquiriesScreen()),
+                MaterialPageRoute(
+                    builder: (context) => const InquiriesScreen()),
               );
             },
           ),
-
           const _OwnerProfileOption(
             icon: Icons.verified_user_outlined,
             title: "Verification Status",
-            subtitle: "Your owner account is verified",
+            subtitle: "Not connected to Firebase role data yet",
           ),
-
           const _OwnerProfileOption(
             icon: Icons.business_outlined,
             title: "Business Details",
@@ -125,19 +119,27 @@ class OwnerProfileScreen extends StatelessWidget {
               );
             },
           ),
-
           _OwnerProfileOption(
             icon: Icons.logout,
             title: "Logout",
             subtitle: "Sign out from owner account",
-            onTap: () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const WelcomeScreen(),
-                ),
-                    (route) => false,
-              );
+            onTap: () async {
+              try {
+                await AuthService().signOut();
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WelcomeScreen(),
+                  ),
+                  (route) => false,
+                );
+              } on FirebaseAuthException catch (error) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(friendlyAuthError(error))),
+                );
+              }
             },
           ),
         ],
