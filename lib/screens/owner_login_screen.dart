@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
 import 'owner_home_screen.dart';
 import 'owner_verification_request_screen.dart';
 
@@ -20,6 +21,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
+  final _userService = UserService();
   bool _isSubmitting = false;
 
   @override
@@ -34,10 +36,25 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
 
     setState(() => _isSubmitting = true);
     try {
-      await _authService.signInWithEmailAndPassword(
+      final credential = await _authService.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      final firebaseUser = credential.user;
+      final profile = firebaseUser == null
+          ? null
+          : await _userService.getUserProfile(firebaseUser.uid);
+
+      if (profile == null || profile.role != 'owner' || !profile.isActive) {
+        await _authService.signOut();
+        if (!mounted) return;
+        _showError(
+          profile != null && !profile.isActive
+              ? 'This owner account is inactive. Please contact StayNest support.'
+              : 'This account is not registered as an owner. Please use Customer Login or contact StayNest support.',
+        );
+        return;
+      }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
@@ -46,6 +63,13 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
       );
     } on FirebaseAuthException catch (error) {
       if (mounted) _showError(friendlyAuthError(error));
+    } on FirebaseException {
+      await _authService.signOut();
+      if (mounted) {
+        _showError(
+          'We could not verify this account\'s owner role. You have been signed out. Please try again.',
+        );
+      }
     } finally {
       _passwordController.clear();
       if (mounted) setState(() => _isSubmitting = false);
@@ -82,7 +106,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                         TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 const Text(
-                  'Sign in to continue to the owner area. Owner role verification will be added in a later phase.',
+                  'Sign in with an account registered with the owner role.',
                   style: TextStyle(color: Colors.black54),
                 ),
                 const SizedBox(height: 32),
@@ -155,7 +179,7 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                                 fontWeight: FontWeight.bold, fontSize: 16)),
                         SizedBox(height: 6),
                         Text(
-                          'Tap here to request owner verification. Role enforcement will be connected in a later phase.',
+                          'Tap here to request owner verification. Requests are not connected to Firebase yet.',
                           style: TextStyle(color: Colors.black54, height: 1.4),
                         ),
                       ],

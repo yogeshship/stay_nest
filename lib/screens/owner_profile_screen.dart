@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
 import '../services/room_data_service.dart';
 import '../services/inquiry_service.dart';
 import 'my_listings_screen.dart';
@@ -40,19 +41,7 @@ class OwnerProfileScreen extends StatelessWidget {
             child: Icon(Icons.person, size: 48, color: Colors.white),
           ),
           const SizedBox(height: 14),
-          const Center(
-            child: Text(
-              "Owner Account",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Center(
-            child: Text(
-              "Role verification will be added in a later phase",
-              style: TextStyle(color: Colors.black54),
-            ),
-          ),
+          const _OwnerProfileIdentity(),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -96,11 +85,7 @@ class OwnerProfileScreen extends StatelessWidget {
               );
             },
           ),
-          const _OwnerProfileOption(
-            icon: Icons.verified_user_outlined,
-            title: "Verification Status",
-            subtitle: "Not connected to Firebase role data yet",
-          ),
+          const _OwnerVerificationStatusOption(),
           const _OwnerProfileOption(
             icon: Icons.business_outlined,
             title: "Business Details",
@@ -144,6 +129,70 @@ class OwnerProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OwnerProfileIdentity extends StatelessWidget {
+  const _OwnerProfileIdentity();
+
+  @override
+  Widget build(BuildContext context) {
+    final firebaseUser = AuthService().currentUser;
+    if (firebaseUser == null) return const SizedBox.shrink();
+
+    return StreamBuilder(
+      stream: UserService().watchUserProfile(firebaseUser.uid),
+      builder: (context, snapshot) {
+        final profile = snapshot.data;
+        final name =
+            profile?.fullName.isNotEmpty == true ? profile!.fullName : 'Owner';
+        final detail = profile?.phoneNumber.isNotEmpty == true
+            ? profile!.phoneNumber
+            : firebaseUser.email ?? 'StayNest owner';
+
+        return Column(
+          children: [
+            Center(
+              child: Text(
+                name,
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                detail,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _OwnerVerificationStatusOption extends StatelessWidget {
+  const _OwnerVerificationStatusOption();
+
+  @override
+  Widget build(BuildContext context) {
+    final firebaseUser = AuthService().currentUser;
+    if (firebaseUser == null) return const SizedBox.shrink();
+
+    return StreamBuilder(
+      stream: UserService().watchUserProfile(firebaseUser.uid),
+      builder: (context, snapshot) {
+        final status = snapshot.data?.verificationStatus ?? 'Unavailable';
+        return _OwnerProfileOption(
+          icon: Icons.verified_user_outlined,
+          title: 'Verification Status',
+          subtitle: status,
+        );
+      },
     );
   }
 }

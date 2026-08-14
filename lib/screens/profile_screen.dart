@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/auth_service.dart';
+import '../services/user_service.dart';
 import '../services/saved_rooms_service.dart';
 import '../services/inquiry_service.dart';
 import 'saved_screen.dart';
@@ -44,19 +45,7 @@ class ProfileScreen extends StatelessWidget {
             child: Icon(Icons.person, size: 48, color: Colors.white),
           ),
           const SizedBox(height: 14),
-          const Center(
-            child: Text(
-              "Customer User",
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Center(
-            child: Text(
-              "Looking for verified student rooms",
-              style: TextStyle(color: Colors.black54),
-            ),
-          ),
+          const _CustomerProfileIdentity(),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -162,6 +151,49 @@ class ProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CustomerProfileIdentity extends StatelessWidget {
+  const _CustomerProfileIdentity();
+
+  @override
+  Widget build(BuildContext context) {
+    final firebaseUser = AuthService().currentUser;
+    if (firebaseUser == null) return const SizedBox.shrink();
+
+    return StreamBuilder(
+      stream: UserService().watchUserProfile(firebaseUser.uid),
+      builder: (context, snapshot) {
+        final profile = snapshot.data;
+        final name = profile?.fullName.isNotEmpty == true
+            ? profile!.fullName
+            : 'Customer';
+        final detail = profile?.phoneNumber.isNotEmpty == true
+            ? profile!.phoneNumber
+            : firebaseUser.email ?? 'StayNest customer';
+
+        return Column(
+          children: [
+            Center(
+              child: Text(
+                name,
+                style:
+                    const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                detail,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

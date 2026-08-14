@@ -31,6 +31,12 @@ class AuthService {
   }
 
   Future<void> signOut() => _firebaseAuth.signOut();
+
+  Future<void> deleteCurrentUser() async {
+    final user = _firebaseAuth.currentUser;
+    if (user == null) return;
+    await user.delete();
+  }
 }
 
 String friendlyAuthError(FirebaseAuthException error) {

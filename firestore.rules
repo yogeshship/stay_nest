@@ -1,0 +1,53 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+
+      allow create: if isSignedIn()
+        && isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'fullName',
+          'phoneNumber',
+          'role',
+          'verificationStatus',
+          'isActive',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'customer'
+        && request.resource.data.verificationStatus == 'notRequested'
+        && request.resource.data.isActive == true
+        && request.resource.data.fullName is string
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isSignedIn()
+        && isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fullName',
+          'phoneNumber',
+          'updatedAt'
+        ])
+        && request.resource.data.fullName is string
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+  }
+}
