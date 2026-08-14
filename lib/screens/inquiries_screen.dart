@@ -19,6 +19,49 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
     });
   }
 
+  Future<void> scheduleVisit(int index) async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 1),
+      helpText: "SELECT VISIT DATE",
+      cancelText: "CANCEL",
+      confirmText: "NEXT",
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 10, minute: 0),
+      helpText: "SELECT VISIT TIME",
+      cancelText: "CANCEL",
+      confirmText: "SCHEDULE",
+    );
+    if (time == null || !mounted) return;
+
+    final scheduledVisit = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    setState(() => InquiryService.scheduleVisit(index, scheduledVisit));
+
+    final dateLabel = MaterialLocalizations.of(context).formatMediumDate(date);
+    final timeLabel = time.format(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Visit scheduled for $dateLabel at $timeLabel"),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final inquiries = InquiryService.inquiries;
@@ -36,24 +79,24 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
       ),
       body: inquiries.isEmpty
           ? const Center(
-        child: Text(
-          "No inquiries yet",
-          style: TextStyle(color: Colors.black54),
-        ),
-      )
+              child: Text(
+                "No inquiries yet",
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
           : ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: inquiries.length,
-        itemBuilder: (context, index) {
-          return _InquiryCard(
-            inquiry: inquiries[index],
-            onAccept: () => updateInquiryStatus(index, "Accepted"),
-            onReject: () => updateInquiryStatus(index, "Rejected"),
-            onSchedule: () => updateInquiryStatus(index, "Visit Scheduled"),
-            onComplete: () => updateInquiryStatus(index, "Completed"),
-          );
-        },
-      ),
+              padding: const EdgeInsets.all(20),
+              itemCount: inquiries.length,
+              itemBuilder: (context, index) {
+                return _InquiryCard(
+                  inquiry: inquiries[index],
+                  onAccept: () => updateInquiryStatus(index, "Accepted"),
+                  onReject: () => updateInquiryStatus(index, "Rejected"),
+                  onSchedule: () => scheduleVisit(index),
+                  onComplete: () => updateInquiryStatus(index, "Completed"),
+                );
+              },
+            ),
     );
   }
 }
@@ -89,7 +132,7 @@ class _InquiryCard extends StatelessWidget {
       return "Rejected — This inquiry is closed.";
     }
     if (inquiry.status == "Visit Scheduled") {
-      return "Visit Scheduled — Customer visit is being coordinated.";
+      return "Visit confirmed — Please be available at the scheduled time.";
     }
     if (inquiry.status == "Completed") {
       return "Completed — Visit process has been completed.";
@@ -120,7 +163,6 @@ class _InquiryCard extends StatelessWidget {
                 child: Icon(Icons.person, color: InquiriesScreen.primaryColor),
               ),
               const SizedBox(width: 14),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,23 +171,22 @@ class _InquiryCard extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(inquiry.roomTitle,
-                        style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                        style: const TextStyle(
+                            color: Colors.black54, fontSize: 12)),
                     const SizedBox(height: 4),
                     Text(inquiry.roomLocation,
-                        style: const TextStyle(color: Colors.black45, fontSize: 12)),
+                        style: const TextStyle(
+                            color: Colors.black45, fontSize: 12)),
                   ],
                 ),
               ),
-
               Text(
                 inquiry.time,
                 style: const TextStyle(color: Colors.black45, fontSize: 12),
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
           Text(
             inquiry.type,
             style: const TextStyle(
@@ -154,17 +195,13 @@ class _InquiryCard extends StatelessWidget {
               fontSize: 13,
             ),
           ),
-
           const SizedBox(height: 6),
-
           Text(inquiry.message),
-
           const SizedBox(height: 12),
-
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: getStatusColor().withOpacity(0.12),
+              color: getStatusColor().withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
@@ -175,14 +212,15 @@ class _InquiryCard extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 8),
-
           Text(
             getStatusMessage(),
             style: const TextStyle(color: Colors.black54, fontSize: 12),
           ),
-
+          if (inquiry.scheduledVisit != null) ...[
+            const SizedBox(height: 14),
+            _ScheduleSummary(scheduledVisit: inquiry.scheduledVisit!),
+          ],
           if (isPending) ...[
             const SizedBox(height: 14),
             Row(
@@ -200,13 +238,13 @@ class _InquiryCard extends StatelessWidget {
                       backgroundColor: InquiriesScreen.primaryColor,
                     ),
                     onPressed: onAccept,
-                    child: const Text("Accept", style: TextStyle(color: Colors.white)),
+                    child: const Text("Accept",
+                        style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
             ),
           ],
-
           if (isAccepted) ...[
             const SizedBox(height: 14),
             SizedBox(
@@ -217,13 +255,12 @@ class _InquiryCard extends StatelessWidget {
                 ),
                 onPressed: onSchedule,
                 child: const Text(
-                  "Mark Visit Scheduled",
+                  "Schedule Visit",
                   style: TextStyle(color: Colors.white),
                 ),
               ),
             ),
           ],
-
           if (isScheduled) ...[
             const SizedBox(height: 14),
             SizedBox(
@@ -240,6 +277,66 @@ class _InquiryCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleSummary extends StatelessWidget {
+  final DateTime scheduledVisit;
+
+  const _ScheduleSummary({required this.scheduledVisit});
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    final date = localizations.formatFullDate(scheduledVisit);
+    final time = TimeOfDay.fromDateTime(scheduledVisit).format(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E8),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFD58A)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.event_available_rounded,
+              color: Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Scheduled visit",
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(date, style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 2),
+                Text(
+                  time,
+                  style: const TextStyle(
+                    color: InquiriesScreen.primaryColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

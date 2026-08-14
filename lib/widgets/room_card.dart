@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/room_model.dart';
 import '../services/saved_rooms_service.dart';
 import '../screens/room_detail_screen.dart';
+import '../theme/app_theme.dart';
 
 class RoomCard extends StatefulWidget {
   final String imagePath;
@@ -73,6 +74,7 @@ class _RoomCardState extends State<RoomCard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           children: [
@@ -85,20 +87,23 @@ class _RoomCardState extends State<RoomCard> {
                 fit: BoxFit.cover,
               ),
             ),
-
             const SizedBox(width: 12),
-
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Verified",
-                    style: TextStyle(
-                      color: Color(0xFF6C3BFF),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  const Row(
+                    children: [
+                      Icon(Icons.verified_rounded,
+                          color: AppColors.success, size: 14),
+                      SizedBox(width: 4),
+                      Text("VERIFIED",
+                          style: TextStyle(
+                              color: AppColors.success,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: .7)),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -124,14 +129,13 @@ class _RoomCardState extends State<RoomCard> {
                   Text(
                     widget.price,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                        color: AppColors.primary),
                   ),
                 ],
               ),
             ),
-
             IconButton(
               onPressed: () {
                 setState(() {
@@ -140,7 +144,7 @@ class _RoomCardState extends State<RoomCard> {
               },
               icon: Icon(
                 isSaved ? Icons.favorite : Icons.favorite_border,
-                color: isSaved ? Colors.red : Colors.black,
+                color: isSaved ? const Color(0xFFE6506E) : AppColors.textMuted,
               ),
             ),
           ],

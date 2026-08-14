@@ -7,6 +7,7 @@ class InquiryModel {
   final String time;
   final String status;
   final bool isVisibleToCustomer;
+  final DateTime? scheduledVisit;
 
   InquiryModel({
     required this.customerName,
@@ -17,11 +18,13 @@ class InquiryModel {
     required this.time,
     this.status = "Pending",
     this.isVisibleToCustomer = true,
+    this.scheduledVisit,
   });
 
   InquiryModel copyWith({
     String? status,
     bool? isVisibleToCustomer,
+    DateTime? scheduledVisit,
   }) {
     return InquiryModel(
       customerName: customerName,
@@ -32,6 +35,7 @@ class InquiryModel {
       time: time,
       status: status ?? this.status,
       isVisibleToCustomer: isVisibleToCustomer ?? this.isVisibleToCustomer,
+      scheduledVisit: scheduledVisit ?? this.scheduledVisit,
     );
   }
 }

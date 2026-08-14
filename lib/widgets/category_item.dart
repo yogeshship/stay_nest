@@ -1,17 +1,46 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class CategoryRow extends StatelessWidget {
-  const CategoryRow({super.key});
+  final ValueChanged<String>? onCategoryTap;
+
+  const CategoryRow({super.key, this.onCategoryTap});
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Row(
       children: [
-        CategoryItem(icon: Icons.bed_rounded, title: "Rooms"),
-        CategoryItem(icon: Icons.apartment_rounded, title: "Hostels"),
-        CategoryItem(icon: Icons.people_rounded, title: "Sharing"),
-        CategoryItem(icon: Icons.verified_rounded, title: "Verified"),
+        Expanded(
+          child: CategoryItem(
+            icon: Icons.bed_rounded,
+            title: "Rooms",
+            onTap: () => onCategoryTap?.call("Rooms"),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: CategoryItem(
+            icon: Icons.apartment_rounded,
+            title: "Hostels",
+            onTap: () => onCategoryTap?.call("Hostels"),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: CategoryItem(
+            icon: Icons.people_rounded,
+            title: "Sharing",
+            onTap: () => onCategoryTap?.call("Sharing"),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: CategoryItem(
+            icon: Icons.verified_rounded,
+            title: "Verified",
+            onTap: () => onCategoryTap?.call("Verified"),
+          ),
+        ),
       ],
     );
   }
@@ -20,29 +49,35 @@ class CategoryRow extends StatelessWidget {
 class CategoryItem extends StatelessWidget {
   final IconData icon;
   final String title;
+  final VoidCallback? onTap;
 
   const CategoryItem({
     super.key,
     required this.icon,
     required this.title,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          height: 58,
-          width: 58,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        children: [
+          Ink(
+            height: 56,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEDEAFF),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: AppColors.primary),
           ),
-          child: Icon(icon, color: const Color(0xFF6C3BFF)),
-        ),
-        const SizedBox(height: 8),
-        Text(title, style: const TextStyle(fontSize: 12)),
-      ],
+          const SizedBox(height: 8),
+          Text(title, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
     );
   }
 }

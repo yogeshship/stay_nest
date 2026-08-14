@@ -3,7 +3,9 @@ import '../widgets/room_card.dart';
 import '../services/room_data_service.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialLocation;
+
+  const SearchScreen({super.key, this.initialLocation});
 
   static const Color primaryColor = Color(0xFF6C3BFF);
   static const Color bgColor = Color(0xFFF8F7FC);
@@ -13,14 +15,19 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  String selectedLocation = "Location";
+  late String selectedLocation;
   String selectedPrice = "Price";
   String selectedGender = "Gender";
 
+  @override
+  void initState() {
+    super.initState();
+    selectedLocation = widget.initialLocation ?? "Location";
+  }
+
   List get filteredRooms {
-    final rooms = RoomDataService.ownerRooms
-        .where((room) => room.isAvailable)
-        .toList();
+    final rooms =
+        RoomDataService.ownerRooms.where((room) => room.isAvailable).toList();
 
     return rooms.where((room) {
       final roomLocation = room.location.toLowerCase();
@@ -78,11 +85,12 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               ...options.map(
-                    (option) => ListTile(
+                (option) => ListTile(
                   title: Text(option),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
@@ -170,7 +178,6 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           const _SearchInput(),
           const SizedBox(height: 16),
-
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -195,9 +202,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ],
             ),
           ),
-
           const SizedBox(height: 18),
-
           SizedBox(
             width: double.infinity,
             height: 46,
@@ -209,15 +214,14 @@ class _SearchScreenState extends State<SearchScreen> {
               label: const Text("Refresh Results"),
             ),
           ),
-
           const SizedBox(height: 12),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 "${results.length} rooms found",
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               TextButton(
                 onPressed: _clearFilters,
@@ -225,14 +229,12 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
           if (results.isEmpty)
             const _EmptyResult()
           else
             ...results.map(
-                  (room) => RoomCard(
+              (room) => RoomCard(
                 imagePath: room.imagePath,
                 title: room.title,
                 location: room.location,
@@ -240,8 +242,8 @@ class _SearchScreenState extends State<SearchScreen> {
                 gender: room.gender,
                 description: room.description,
                 isAvailable: room.isAvailable,
-                    ownerName: room.ownerName,
-                    ownerPhone: room.ownerPhone,
+                ownerName: room.ownerName,
+                ownerPhone: room.ownerPhone,
               ),
             ),
         ],

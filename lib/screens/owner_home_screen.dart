@@ -33,6 +33,8 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final int listingCount = RoomDataService.ownerRooms.length;
+    final int availableCount =
+        RoomDataService.ownerRooms.where((room) => room.isAvailable).length;
     final int inquiryCount = InquiryService.inquiries.length;
 
     return Scaffold(
@@ -50,32 +52,28 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         children: [
           _StatsCard(
             listingCount: listingCount,
+            availableCount: availableCount,
             inquiryCount: inquiryCount,
           ),
-
           const SizedBox(height: 24),
-
           _OwnerActionCard(
             icon: Icons.add_home_work_rounded,
             title: "Add Room",
             subtitle: "Post a new room or hostel listing",
             onTap: () => openScreen(const AddRoomScreen()),
           ),
-
           _OwnerActionCard(
             icon: Icons.home_work_outlined,
             title: "My Listings",
             subtitle: "Manage your added rooms",
             onTap: () => openScreen(const MyListingsScreen()),
           ),
-
           _OwnerActionCard(
             icon: Icons.chat_bubble_outline,
             title: "Inquiries",
             subtitle: "View messages from students",
             onTap: () => openScreen(const InquiriesScreen()),
           ),
-
           _OwnerActionCard(
             icon: Icons.person_outline,
             title: "Owner Profile",
@@ -90,10 +88,12 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
 
 class _StatsCard extends StatelessWidget {
   final int listingCount;
+  final int availableCount;
   final int inquiryCount;
 
   const _StatsCard({
     required this.listingCount,
+    required this.availableCount,
     required this.inquiryCount,
   });
 
@@ -109,7 +109,7 @@ class _StatsCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           _StatItem(title: "Listings", value: listingCount.toString()),
-          const _StatItem(title: "Views", value: "128"),
+          _StatItem(title: "Available", value: availableCount.toString()),
           _StatItem(title: "Inquiries", value: inquiryCount.toString()),
         ],
       ),

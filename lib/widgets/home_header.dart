@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class HomeHeader extends StatelessWidget {
   const HomeHeader({super.key});
@@ -7,24 +8,49 @@ class HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.location_on, color: primaryColor, size: 22),
-        const SizedBox(width: 6),
-        const Expanded(
-          child: Text(
-            "Kathmandu, Nepal",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Good morning 👋',
+                      style:
+                          TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                  SizedBox(height: 4),
+                  Text('Find your next stay',
+                      style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -.4)),
+                ],
+              ),
+            ),
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.border)),
+              child: const Icon(Icons.notifications_none_rounded),
+            ),
+          ],
         ),
-        Container(
-          height: 42,
-          width: 42,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Icon(Icons.notifications_none_rounded),
+        const SizedBox(height: 13),
+        const Row(
+          children: [
+            Icon(Icons.location_on_rounded, color: AppColors.primary, size: 18),
+            SizedBox(width: 5),
+            Text('Kathmandu, Nepal',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textMuted)),
+          ],
         ),
       ],
     );

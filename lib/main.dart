@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/welcome_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const StayNestApp());
@@ -13,6 +14,7 @@ class StayNestApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'StayNest',
+      theme: AppTheme.light,
       home: const WelcomeScreen(),
     );
   }

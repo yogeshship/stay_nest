@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/inquiry_service.dart';
 import '../models/inquiry_model.dart';
+import '../widgets/scheduled_visit_card.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -32,8 +33,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                 backgroundColor: Colors.red,
               ),
               onPressed: () {
-                final originalIndex =
-                InquiryService.inquiries.indexOf(inquiry);
+                final originalIndex = InquiryService.inquiries.indexOf(inquiry);
 
                 if (originalIndex != -1) {
                   setState(() {
@@ -76,23 +76,23 @@ class _MessagesScreenState extends State<MessagesScreen> {
       ),
       body: inquiries.isEmpty
           ? const Center(
-        child: Text(
-          "No messages yet",
-          style: TextStyle(color: Colors.black54),
-        ),
-      )
+              child: Text(
+                "No messages yet",
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
           : ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: inquiries.length,
-        itemBuilder: (context, index) {
-          final inquiry = inquiries[index];
+              padding: const EdgeInsets.all(20),
+              itemCount: inquiries.length,
+              itemBuilder: (context, index) {
+                final inquiry = inquiries[index];
 
-          return _MessageCard(
-            inquiry: inquiry,
-            onDelete: () => confirmDelete(inquiry),
-          );
-        },
-      ),
+                return _MessageCard(
+                  inquiry: inquiry,
+                  onDelete: () => confirmDelete(inquiry),
+                );
+              },
+            ),
     );
   }
 }
@@ -145,73 +145,76 @@ class _MessageCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
-            backgroundColor: Color(0xFFEDE7FF),
-            child: Icon(
-              Icons.chat_bubble_outline,
-              color: MessagesScreen.primaryColor,
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  inquiry.roomTitle,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-
-                Text(
-                  inquiry.roomLocation,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Text(getMessageText()),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  inquiry.status,
-                  style: TextStyle(
-                    color: getStatusColor(),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          Column(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                inquiry.time,
-                style: const TextStyle(
-                  color: Colors.black45,
-                  fontSize: 12,
+              const CircleAvatar(
+                backgroundColor: Color(0xFFEDE7FF),
+                child: Icon(
+                  Icons.chat_bubble_outline,
+                  color: MessagesScreen.primaryColor,
                 ),
               ),
-              IconButton(
-                onPressed: onDelete,
-                icon: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      inquiry.roomTitle,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      inquiry.roomLocation,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(getMessageText()),
+                    const SizedBox(height: 8),
+                    Text(
+                      inquiry.status,
+                      style: TextStyle(
+                        color: getStatusColor(),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              Column(
+                children: [
+                  Text(
+                    inquiry.time,
+                    style: const TextStyle(
+                      color: Colors.black45,
+                      fontSize: 12,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onDelete,
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
+          if (inquiry.scheduledVisit != null) ...[
+            const SizedBox(height: 14),
+            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisit!),
+          ],
         ],
       ),
     );

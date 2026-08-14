@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 
 class HomeBanner extends StatelessWidget {
   const HomeBanner({super.key});
@@ -8,30 +9,43 @@ class HomeBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 135,
-      padding: const EdgeInsets.all(20),
+      height: 154,
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: primaryColor,
+        gradient: const LinearGradient(
+            colors: [AppColors.primary, AppColors.primaryDark],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(24),
       ),
       child: Row(
         children: [
           const Expanded(
-            child: Text(
-              "Find your ideal room\nnear your college",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                height: 1.25,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('MOVE WITH CONFIDENCE',
+                    style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1)),
+                SizedBox(height: 8),
+                Text("Verified rooms,\ncloser to campus",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2)),
+              ],
             ),
           ),
           Container(
             height: 76,
             width: 76,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(22),
             ),
             child: const Icon(

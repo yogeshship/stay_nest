@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'customer_login_screen.dart';
 import 'owner_login_screen.dart';
+import '../theme/app_theme.dart';
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({super.key});
@@ -11,39 +12,52 @@ class RoleSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 30),
-
+              Row(
+                children: [
+                  IconButton.filledTonal(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.arrow_back_rounded),
+                  ),
+                  const Spacer(),
+                  const Text('STAYNEST',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: AppColors.primary)),
+                ],
+              ),
+              const SizedBox(height: 48),
               const Text(
-                "Continue as",
+                "What brings you\nto StayNest?",
                 style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 34,
+                  height: 1.12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               const Text(
-                "Choose your role to get the right experience.",
+                "Choose an experience made for your needs.",
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.black54,
                 ),
               ),
-
-              const SizedBox(height: 40),
-
+              const SizedBox(height: 34),
               _RoleCard(
-                icon: Icons.search_rounded,
-                title: "Customer",
-                subtitle: "Find rooms and hostels near your college",
+                icon: Icons.travel_explore_rounded,
+                title: "I'm looking for a stay",
+                subtitle: "Discover verified rooms and hostels nearby",
+                badge: 'STUDENT',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -53,13 +67,12 @@ class RoleSelectionScreen extends StatelessWidget {
                   );
                 },
               ),
-
               const SizedBox(height: 18),
-
               _RoleCard(
-                icon: Icons.home_work_rounded,
-                title: "Owner",
-                subtitle: "Add rooms, manage listings and inquiries",
+                icon: Icons.apartment_rounded,
+                title: "I have a property",
+                subtitle: "List spaces and manage student inquiries",
+                badge: 'OWNER',
                 onTap: () {
                   Navigator.push(
                     context,
@@ -82,62 +95,72 @@ class _RoleCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final String badge;
 
   const _RoleCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.onTap,
+    required this.badge,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: const Color(0xFFEDE7FF),
-              child: Icon(icon, color: RoleSelectionScreen.primaryColor),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Ink(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border),
             ),
-
-            const SizedBox(width: 16),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  height: 60,
+                  width: 60,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFEAE7FF),
+                      borderRadius: BorderRadius.circular(18)),
+                  child: Icon(icon, color: AppColors.primary, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(badge,
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1)),
+                      const SizedBox(height: 5),
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const Icon(Icons.arrow_forward_rounded,
+                    size: 21, color: AppColors.textMuted),
+              ],
             ),
-
-            const Icon(Icons.arrow_forward_ios, size: 18),
-          ],
-        ),
-      ),
+          )),
     );
   }
 }

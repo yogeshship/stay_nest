@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/inquiry_service.dart';
 import '../models/inquiry_model.dart';
+import '../widgets/scheduled_visit_card.dart';
 
 class MyRequestsScreen extends StatelessWidget {
   const MyRequestsScreen({super.key});
@@ -27,18 +28,18 @@ class MyRequestsScreen extends StatelessWidget {
       ),
       body: requests.isEmpty
           ? const Center(
-        child: Text(
-          "No room requests yet",
-          style: TextStyle(color: Colors.black54),
-        ),
-      )
+              child: Text(
+                "No room requests yet",
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
           : ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: requests.length,
-        itemBuilder: (context, index) {
-          return _RequestCard(inquiry: requests[index]);
-        },
-      ),
+              padding: const EdgeInsets.all(20),
+              itemCount: requests.length,
+              itemBuilder: (context, index) {
+                return _RequestCard(inquiry: requests[index]);
+              },
+            ),
     );
   }
 }
@@ -83,6 +84,10 @@ class _RequestCard extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
+          if (inquiry.scheduledVisit != null) ...[
+            const SizedBox(height: 14),
+            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisit!),
+          ],
           const SizedBox(height: 6),
           Text(
             "Requested at ${inquiry.time}",

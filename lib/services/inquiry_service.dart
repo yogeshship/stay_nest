@@ -11,6 +11,13 @@ class InquiryService {
     inquiries[index] = inquiries[index].copyWith(status: status);
   }
 
+  static void scheduleVisit(int index, DateTime scheduledVisit) {
+    inquiries[index] = inquiries[index].copyWith(
+      status: "Visit Scheduled",
+      scheduledVisit: scheduledVisit,
+    );
+  }
+
   static void hideFromCustomer(int index) {
     inquiries[index] = inquiries[index].copyWith(isVisibleToCustomer: false);
   }
