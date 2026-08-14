@@ -42,12 +42,81 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /rooms/{roomId} {
+      allow read: if isSignedIn()
+        && (resource.data.isAvailable == true
+          || resource.data.ownerId == request.auth.uid);
+
+      allow create: if isActiveOwner()
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'location',
+          'monthlyRent',
+          'genderPreference',
+          'description',
+          'imageUrls',
+          'isAvailable',
+          'createdAt',
+          'updatedAt'
+        ])
+        && hasValidRoomFields(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'location',
+          'monthlyRent',
+          'genderPreference',
+          'description',
+          'imageUrls',
+          'isAvailable',
+          'createdAt',
+          'updatedAt'
+        ])
+        && hasValidRoomFields(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isActiveOwner()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isOwner(userId) {
       return request.auth.uid == userId;
+    }
+
+    function isActiveOwner() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    function hasValidRoomFields(data) {
+      return data.ownerId is string
+        && data.title is string
+        && data.title.size() > 0
+        && data.location is string
+        && data.location.size() > 0
+        && data.monthlyRent is number
+        && data.monthlyRent > 0
+        && data.genderPreference is string
+        && data.description is string
+        && data.imageUrls is list
+        && data.isAvailable is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/room_model.dart';
 import '../widgets/home_header.dart';
 import '../widgets/search_box.dart';
 import '../widgets/home_banner.dart';
@@ -6,7 +7,7 @@ import '../widgets/section_title.dart';
 import '../widgets/category_item.dart';
 import '../widgets/popular_areas.dart';
 import '../widgets/room_card.dart';
-import '../services/room_data_service.dart';
+import '../services/room_service.dart';
 import 'search_screen.dart';
 import 'saved_screen.dart';
 import 'profile_screen.dart';
@@ -29,7 +30,7 @@ class HomeScreen extends StatelessWidget {
       return;
     }
 
-    if (category == "Verified") {
+    if (category == "Safety") {
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -94,9 +95,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rooms =
-        RoomDataService.ownerRooms.where((room) => room.isAvailable).toList();
-
     return Scaffold(
       backgroundColor: AppColors.background,
       bottomNavigationBar: NavigationBar(
@@ -156,25 +154,52 @@ class HomeScreen extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => const SearchScreen())),
             ),
             const SizedBox(height: 14),
-            if (rooms.isEmpty)
-              const Text("No rooms available yet")
-            else
-              ...rooms.take(3).map(
-                    (room) => RoomCard(
-                      imagePath: room.imagePath,
-                      title: room.title,
-                      location: room.location,
-                      price: "Rs. ${room.price}/month",
-                      gender: room.gender,
-                      description: room.description,
-                      isAvailable: room.isAvailable,
-                      ownerName: room.ownerName,
-                      ownerPhone: room.ownerPhone,
-                    ),
-                  ),
+            const _RecommendedRooms(),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RecommendedRooms extends StatefulWidget {
+  const _RecommendedRooms();
+
+  @override
+  State<_RecommendedRooms> createState() => _RecommendedRoomsState();
+}
+
+class _RecommendedRoomsState extends State<_RecommendedRooms> {
+  late final Stream<List<RoomModel>> _roomsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _roomsStream = RoomService().watchAvailableRooms();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<RoomModel>>(
+      stream: _roomsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const Text(
+            'Rooms could not be loaded. Please try again.',
+            style: TextStyle(color: Colors.red),
+          );
+        }
+
+        final rooms = snapshot.data ?? const <RoomModel>[];
+        if (rooms.isEmpty) return const Text('No rooms available yet');
+
+        return Column(
+          children: rooms.take(3).map((room) => RoomCard(room: room)).toList(),
+        );
+      },
     );
   }
 }

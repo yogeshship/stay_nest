@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
-import '../services/room_data_service.dart';
+import '../models/room_model.dart';
+import '../services/room_service.dart';
 import '../services/inquiry_service.dart';
 import 'my_listings_screen.dart';
 import 'inquiries_screen.dart';
@@ -18,7 +19,6 @@ class OwnerProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int listingCount = RoomDataService.ownerRooms.length;
     final int inquiryCount = InquiryService.inquiries.length;
 
     return Scaffold(
@@ -46,10 +46,7 @@ class OwnerProfileScreen extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _OwnerStatCard(
-                  title: "Listings",
-                  value: listingCount.toString(),
-                ),
+                child: _OwnerListingCount(),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -129,6 +126,34 @@ class OwnerProfileScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OwnerListingCount extends StatefulWidget {
+  @override
+  State<_OwnerListingCount> createState() => _OwnerListingCountState();
+}
+
+class _OwnerListingCountState extends State<_OwnerListingCount> {
+  late final Stream<List<RoomModel>> _roomsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _roomsStream = RoomService().watchOwnerRooms();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<RoomModel>>(
+      stream: _roomsStream,
+      builder: (context, snapshot) {
+        return _OwnerStatCard(
+          title: 'Listings',
+          value: snapshot.hasError ? '—' : '${snapshot.data?.length ?? 0}',
+        );
+      },
     );
   }
 }

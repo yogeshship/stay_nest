@@ -3,15 +3,13 @@ import '../models/room_model.dart';
 
 class SavedRoomsService {
   static final ValueNotifier<List<RoomModel>> savedRoomsNotifier =
-  ValueNotifier<List<RoomModel>>([]);
+      ValueNotifier<List<RoomModel>>([]);
 
   static List<RoomModel> get savedRooms => savedRoomsNotifier.value;
 
   static bool isSaved(RoomModel room) {
     return savedRooms.any(
-          (savedRoom) =>
-      savedRoom.title == room.title &&
-          savedRoom.location == room.location,
+      (savedRoom) => savedRoom.id == room.id,
     );
   }
 
@@ -20,9 +18,7 @@ class SavedRoomsService {
 
     if (isSaved(room)) {
       updatedList.removeWhere(
-            (savedRoom) =>
-        savedRoom.title == room.title &&
-            savedRoom.location == room.location,
+        (savedRoom) => savedRoom.id == room.id,
       );
     } else {
       updatedList.add(room);

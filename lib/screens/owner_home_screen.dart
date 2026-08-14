@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../services/room_data_service.dart';
+import '../models/room_model.dart';
+import '../services/room_service.dart';
 import '../services/inquiry_service.dart';
 import 'add_room_screen.dart';
 import 'my_listings_screen.dart';
@@ -17,8 +18,12 @@ class OwnerHomeScreen extends StatefulWidget {
 }
 
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
-  void refreshDashboard() {
-    setState(() {});
+  late final Stream<List<RoomModel>> _roomsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _roomsStream = RoomService().watchOwnerRooms();
   }
 
   Future<void> openScreen(Widget screen) async {
@@ -26,15 +31,10 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
       context,
       MaterialPageRoute(builder: (context) => screen),
     );
-
-    refreshDashboard();
   }
 
   @override
   Widget build(BuildContext context) {
-    final int listingCount = RoomDataService.ownerRooms.length;
-    final int availableCount =
-        RoomDataService.ownerRooms.where((room) => room.isAvailable).length;
     final int inquiryCount = InquiryService.inquiries.length;
 
     return Scaffold(
@@ -50,10 +50,16 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          _StatsCard(
-            listingCount: listingCount,
-            availableCount: availableCount,
-            inquiryCount: inquiryCount,
+          StreamBuilder<List<RoomModel>>(
+            stream: _roomsStream,
+            builder: (context, snapshot) {
+              final rooms = snapshot.data ?? const <RoomModel>[];
+              return _StatsCard(
+                listingCount: rooms.length,
+                availableCount: rooms.where((room) => room.isAvailable).length,
+                inquiryCount: inquiryCount,
+              );
+            },
           ),
           const SizedBox(height: 24),
           _OwnerActionCard(

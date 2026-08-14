@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/room_model.dart';
-import '../services/room_data_service.dart';
+import '../services/room_service.dart';
 
 class AddRoomScreen extends StatefulWidget {
   const AddRoomScreen({super.key});
@@ -18,8 +17,9 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
   final TextEditingController rentController = TextEditingController();
   final TextEditingController genderController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
-  final TextEditingController ownerNameController = TextEditingController();
-  final TextEditingController ownerPhoneController = TextEditingController();
+  final RoomService _roomService = RoomService();
+
+  bool _isSubmitting = false;
 
   String selectedImage = "assets/images/room1.jpeg";
 
@@ -29,44 +29,67 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
     "assets/images/room3.jpeg",
   ];
 
-  void submitRoom() {
+  Future<void> submitRoom() async {
+    if (_isSubmitting) return;
+
     if (titleController.text.isEmpty ||
         locationController.text.isEmpty ||
-        rentController.text.isEmpty ||
-        ownerNameController.text.isEmpty ||
-        ownerPhoneController.text.isEmpty) {
+        rentController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please fill title, location, rent, owner name and phone"),
+          content: Text('Please fill in the title, location, and rent.'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    final newRoom = RoomModel(
-      title: titleController.text,
-      location: locationController.text,
-      price: rentController.text,
-      gender: genderController.text.isEmpty ? "Any" : genderController.text,
-      description: descriptionController.text.isEmpty
-          ? "A clean and peaceful room suitable for students."
-          : descriptionController.text,
-      imagePath: selectedImage,
-      ownerName: ownerNameController.text,
-      ownerPhone: ownerPhoneController.text,
+    final monthlyRent = num.tryParse(
+      rentController.text.trim().replaceAll(',', ''),
     );
+    if (monthlyRent == null || monthlyRent <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid monthly rent greater than zero.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
-    RoomDataService.addRoom(newRoom);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Room listing added successfully"),
-        backgroundColor: AddRoomScreen.primaryColor,
-      ),
-    );
-
-    Navigator.pop(context);
+    setState(() => _isSubmitting = true);
+    try {
+      await _roomService.addRoom(
+        title: titleController.text,
+        location: locationController.text,
+        monthlyRent: monthlyRent,
+        genderPreference: genderController.text.trim().isEmpty
+            ? 'Any'
+            : genderController.text,
+        description: descriptionController.text.trim().isEmpty
+            ? 'A clean and peaceful room.'
+            : descriptionController.text,
+        imageUrls: [selectedImage],
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Room listing added successfully'),
+          backgroundColor: AddRoomScreen.primaryColor,
+        ),
+      );
+      Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyRoomError(error)),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -76,8 +99,6 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
     rentController.dispose();
     genderController.dispose();
     descriptionController.dispose();
-    ownerNameController.dispose();
-    ownerPhoneController.dispose();
     super.dispose();
   }
 
@@ -104,7 +125,6 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
-
           SizedBox(
             height: 105,
             child: ListView.separated(
@@ -146,38 +166,19 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
               },
             ),
           ),
-
           const SizedBox(height: 20),
-
-          _InputField(
-            label: "Owner Name",
-            hint: "e.g. Ramesh Shrestha",
-            controller: ownerNameController,
-          ),
-          const SizedBox(height: 14),
-
-          _InputField(
-            label: "Owner Phone",
-            hint: "e.g. 98XXXXXXXX",
-            keyboardType: TextInputType.phone,
-            controller: ownerPhoneController,
-          ),
-          const SizedBox(height: 14),
-
           _InputField(
             label: "Room Title",
             hint: "e.g. Peaceful room near college",
             controller: titleController,
           ),
           const SizedBox(height: 14),
-
           _InputField(
             label: "Location",
             hint: "e.g. Baneshwor, Kathmandu",
             controller: locationController,
           ),
           const SizedBox(height: 14),
-
           _InputField(
             label: "Monthly Rent",
             hint: "e.g. 8500",
@@ -185,23 +186,19 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
             controller: rentController,
           ),
           const SizedBox(height: 14),
-
           _InputField(
             label: "Gender Preference",
             hint: "Boys / Girls / Any",
             controller: genderController,
           ),
           const SizedBox(height: 14),
-
           _InputField(
             label: "Description",
             hint: "Write room details, facilities, nearby places...",
             maxLines: 4,
             controller: descriptionController,
           ),
-
           const SizedBox(height: 24),
-
           SizedBox(
             height: 54,
             child: ElevatedButton(
@@ -211,11 +208,20 @@ class _AddRoomScreenState extends State<AddRoomScreen> {
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              onPressed: submitRoom,
-              child: const Text(
-                "Submit Listing",
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
+              onPressed: _isSubmitting ? null : submitRoom,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text(
+                      'Submit Listing',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
             ),
           ),
         ],

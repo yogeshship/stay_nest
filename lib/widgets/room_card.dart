@@ -1,32 +1,18 @@
 import 'package:flutter/material.dart';
+
 import '../models/room_model.dart';
-import '../services/saved_rooms_service.dart';
 import '../screens/room_detail_screen.dart';
+import '../services/saved_rooms_service.dart';
 import '../theme/app_theme.dart';
+import 'room_image.dart';
 
 class RoomCard extends StatefulWidget {
-  final String imagePath;
-  final String title;
-  final String location;
-  final String price;
-  final String gender;
-  final String description;
-  final bool isAvailable;
-  final String ownerName;
-  final String ownerPhone;
-
   const RoomCard({
     super.key,
-    required this.imagePath,
-    required this.title,
-    required this.location,
-    required this.price,
-    this.gender = "Any",
-    this.description = "A clean and peaceful room suitable for students.",
-    this.isAvailable = true,
-    this.ownerName = "Room Owner",
-    this.ownerPhone = "98XXXXXXXX",
+    required this.room,
   });
+
+  final RoomModel room;
 
   @override
   State<RoomCard> createState() => _RoomCardState();
@@ -35,36 +21,15 @@ class RoomCard extends StatefulWidget {
 class _RoomCardState extends State<RoomCard> {
   @override
   Widget build(BuildContext context) {
-    final room = RoomModel(
-      title: widget.title,
-      location: widget.location,
-      price: widget.price.replaceAll("Rs. ", "").replaceAll("/month", ""),
-      imagePath: widget.imagePath,
-      gender: widget.gender,
-      description: widget.description,
-      isAvailable: widget.isAvailable,
-      ownerName: widget.ownerName,
-      ownerPhone: widget.ownerPhone,
-    );
-
-    final bool isSaved = SavedRoomsService.isSaved(room);
+    final room = widget.room;
+    final isSaved = SavedRoomsService.isSaved(room);
 
     return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => RoomDetailScreen(
-              imagePath: widget.imagePath,
-              title: widget.title,
-              location: widget.location,
-              price: widget.price,
-              gender: widget.gender,
-              description: widget.description,
-              isAvailable: widget.isAvailable,
-              ownerName: widget.ownerName,
-              ownerPhone: widget.ownerPhone,
-            ),
+            builder: (context) => RoomDetailScreen(room: room),
           ),
         );
       },
@@ -80,11 +45,10 @@ class _RoomCardState extends State<RoomCard> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: Image.asset(
-                widget.imagePath,
+              child: RoomImage(
+                source: room.primaryImage,
                 height: 86,
                 width: 86,
-                fit: BoxFit.cover,
               ),
             ),
             const SizedBox(width: 12),
@@ -94,20 +58,26 @@ class _RoomCardState extends State<RoomCard> {
                 children: [
                   const Row(
                     children: [
-                      Icon(Icons.verified_rounded,
-                          color: AppColors.success, size: 14),
+                      Icon(
+                        Icons.home_work_outlined,
+                        color: AppColors.textMuted,
+                        size: 14,
+                      ),
                       SizedBox(width: 4),
-                      Text("VERIFIED",
-                          style: TextStyle(
-                              color: AppColors.success,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: .7)),
+                      Text(
+                        'ROOM LISTING',
+                        style: TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .7,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    widget.title,
+                    room.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -117,7 +87,7 @@ class _RoomCardState extends State<RoomCard> {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    widget.location,
+                    room.location,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -127,20 +97,19 @@ class _RoomCardState extends State<RoomCard> {
                   ),
                   const SizedBox(height: 7),
                   Text(
-                    widget.price,
+                    'Rs. ${room.formattedMonthlyRent}/month',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        color: AppColors.primary),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ],
               ),
             ),
             IconButton(
               onPressed: () {
-                setState(() {
-                  SavedRoomsService.toggleSave(room);
-                });
+                setState(() => SavedRoomsService.toggleSave(room));
               },
               icon: Icon(
                 isSaved ? Icons.favorite : Icons.favorite_border,

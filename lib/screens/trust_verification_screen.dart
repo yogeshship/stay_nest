@@ -23,34 +23,34 @@ class TrustVerificationScreen extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         children: const [
           _TrustCard(
-            icon: Icons.verified_user,
-            title: "Verified Owners Only",
+            icon: Icons.person_outline_rounded,
+            title: "Owner Information",
             text:
-            "Owners cannot directly sign up. StayNest verifies property owners before giving access.",
+                "Formal owner verification and approval will be introduced in a later phase.",
           ),
           _TrustCard(
             icon: Icons.home_work_outlined,
-            title: "Room Listing Review",
+            title: "Review Listing Details",
             text:
-            "Room details, location, rent, and photos are reviewed before listings are trusted.",
+                "Check the room details, location, rent, and photos carefully before making a decision.",
           ),
           _TrustCard(
             icon: Icons.phone_locked_outlined,
             title: "Protected Contact Details",
             text:
-            "Owner phone numbers are not shown directly to prevent fake deals and unsafe contact.",
+                "Owner phone numbers are not shown directly to prevent fake deals and unsafe contact.",
           ),
           _TrustCard(
             icon: Icons.chat_bubble_outline,
             title: "Inquiry Through StayNest",
             text:
-            "Students send inquiries and visit requests through StayNest so the process can be tracked.",
+                "Students send inquiries and visit requests through StayNest so the process can be tracked.",
           ),
           _TrustCard(
             icon: Icons.school_outlined,
             title: "Student-Focused Housing",
             text:
-            "StayNest focuses on rooms and hostels suitable for students near colleges.",
+                "StayNest focuses on rooms and hostels suitable for students near colleges.",
           ),
         ],
       ),

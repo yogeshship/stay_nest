@@ -26,19 +26,19 @@ class HelpSupportScreen extends StatelessWidget {
             icon: Icons.help_outline,
             title: "How StayNest Works",
             text:
-            "Students find verified rooms, send inquiries, and StayNest coordinates the next step safely.",
+                "Students find rooms, send inquiries, and StayNest coordinates the next step safely.",
           ),
           _SupportCard(
             icon: Icons.home_work_outlined,
             title: "For Room Owners",
             text:
-            "Owners must request verification before listing rooms. This keeps the platform trusted.",
+                "Owner verification and approval will be introduced in a later phase.",
           ),
           _SupportCard(
             icon: Icons.report_problem_outlined,
             title: "Report a Problem",
             text:
-            "If a listing looks fake, unsafe, or incorrect, contact StayNest support immediately.",
+                "If a listing looks fake, unsafe, or incorrect, contact StayNest support immediately.",
           ),
           _SupportCard(
             icon: Icons.email_outlined,

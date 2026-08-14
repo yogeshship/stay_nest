@@ -36,9 +36,9 @@ class CategoryRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: CategoryItem(
-            icon: Icons.verified_rounded,
-            title: "Verified",
-            onTap: () => onCategoryTap?.call("Verified"),
+            icon: Icons.shield_outlined,
+            title: "Safety",
+            onTap: () => onCategoryTap?.call("Safety"),
           ),
         ),
       ],

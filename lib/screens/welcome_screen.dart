@@ -57,7 +57,7 @@ class WelcomeScreen extends StatelessWidget {
                       color: Colors.white.withValues(alpha: .12),
                       borderRadius: BorderRadius.circular(30),
                     ),
-                    child: const Text('VERIFIED STUDENT LIVING',
+                    child: const Text('ROOMS AND HOSTELS NEARBY',
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -111,7 +111,7 @@ class WelcomeScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   Center(
                     child: Text(
-                      'Safe stays  •  Verified owners  •  Local support',
+                      'Room options  •  Local search  •  Support',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: .56),
                         fontSize: 12,

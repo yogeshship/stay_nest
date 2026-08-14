@@ -56,7 +56,7 @@ class RoleSelectionScreen extends StatelessWidget {
               _RoleCard(
                 icon: Icons.travel_explore_rounded,
                 title: "I'm looking for a stay",
-                subtitle: "Discover verified rooms and hostels nearby",
+                subtitle: "Discover rooms and hostels nearby",
                 badge: 'STUDENT',
                 onTap: () {
                   Navigator.push(

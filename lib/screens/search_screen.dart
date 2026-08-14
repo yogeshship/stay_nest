@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import '../models/room_model.dart';
 import '../widgets/room_card.dart';
-import '../services/room_data_service.dart';
+import '../services/room_service.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialLocation;
@@ -18,17 +19,16 @@ class _SearchScreenState extends State<SearchScreen> {
   late String selectedLocation;
   String selectedPrice = "Price";
   String selectedGender = "Gender";
+  late final Stream<List<RoomModel>> _roomsStream;
 
   @override
   void initState() {
     super.initState();
     selectedLocation = widget.initialLocation ?? "Location";
+    _roomsStream = RoomService().watchAvailableRooms();
   }
 
-  List get filteredRooms {
-    final rooms =
-        RoomDataService.ownerRooms.where((room) => room.isAvailable).toList();
-
+  List<RoomModel> _filteredRooms(List<RoomModel> rooms) {
     return rooms.where((room) {
       final roomLocation = room.location.toLowerCase();
 
@@ -37,10 +37,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
       final genderMatch = selectedGender == "Gender" ||
           selectedGender == "Any" ||
-          room.gender == selectedGender ||
-          room.gender == "Any";
+          room.genderPreference == selectedGender ||
+          room.genderPreference == "Any";
 
-      final price = int.tryParse(room.price) ?? 0;
+      final price = room.monthlyRent;
 
       bool priceMatch = true;
 
@@ -160,8 +160,6 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final results = filteredRooms;
-
     return Scaffold(
       backgroundColor: SearchScreen.bgColor,
       appBar: AppBar(
@@ -173,80 +171,89 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          const _SearchInput(),
-          const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChipButton(
-                  icon: Icons.location_on_outlined,
-                  label: selectedLocation,
-                  onTap: _selectLocation,
+      body: StreamBuilder<List<RoomModel>>(
+        stream: _roomsStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Rooms could not be loaded. Please check your connection and try again.',
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(width: 10),
-                _FilterChipButton(
-                  icon: Icons.payments_outlined,
-                  label: selectedPrice,
-                  onTap: _selectPrice,
-                ),
-                const SizedBox(width: 10),
-                _FilterChipButton(
-                  icon: Icons.people_outline,
-                  label: selectedGender,
-                  onTap: _selectGender,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                setState(() {});
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text("Refresh Results"),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              ),
+            );
+          }
+
+          final results = _filteredRooms(snapshot.data ?? const []);
+          return ListView(
+            padding: const EdgeInsets.all(20),
             children: [
-              Text(
-                "${results.length} rooms found",
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              const _SearchInput(),
+              const SizedBox(height: 16),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _FilterChipButton(
+                      icon: Icons.location_on_outlined,
+                      label: selectedLocation,
+                      onTap: _selectLocation,
+                    ),
+                    const SizedBox(width: 10),
+                    _FilterChipButton(
+                      icon: Icons.payments_outlined,
+                      label: selectedPrice,
+                      onTap: _selectPrice,
+                    ),
+                    const SizedBox(width: 10),
+                    _FilterChipButton(
+                      icon: Icons.people_outline,
+                      label: selectedGender,
+                      onTap: _selectGender,
+                    ),
+                  ],
+                ),
               ),
-              TextButton(
-                onPressed: _clearFilters,
-                child: const Text("Clear"),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {});
+                  },
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Refresh Results"),
+                ),
               ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "${results.length} rooms found",
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  TextButton(
+                    onPressed: _clearFilters,
+                    child: const Text("Clear"),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (results.isEmpty)
+                const _EmptyResult()
+              else
+                ...results.map((room) => RoomCard(room: room)),
             ],
-          ),
-          const SizedBox(height: 10),
-          if (results.isEmpty)
-            const _EmptyResult()
-          else
-            ...results.map(
-              (room) => RoomCard(
-                imagePath: room.imagePath,
-                title: room.title,
-                location: room.location,
-                price: "Rs. ${room.price}/month",
-                gender: room.gender,
-                description: room.description,
-                isAvailable: room.isAvailable,
-                ownerName: room.ownerName,
-                ownerPhone: room.ownerPhone,
-              ),
-            ),
-        ],
+          );
+        },
       ),
     );
   }

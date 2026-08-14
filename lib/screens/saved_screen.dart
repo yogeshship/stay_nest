@@ -38,15 +38,7 @@ class SavedScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final room = savedRooms[index];
 
-              return RoomCard(
-                imagePath: room.imagePath,
-                title: room.title,
-                location: room.location,
-                price: "Rs. ${room.price}/month",
-                gender: room.gender,
-                description: room.description,
-                isAvailable: room.isAvailable,
-              );
+              return RoomCard(room: room);
             },
           );
         },

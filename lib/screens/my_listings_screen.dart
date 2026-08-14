@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import '../services/room_data_service.dart';
+
 import '../models/room_model.dart';
+import '../services/room_service.dart';
+import '../widgets/room_image.dart';
 
 class MyListingsScreen extends StatefulWidget {
   const MyListingsScreen({super.key});
@@ -13,87 +15,108 @@ class MyListingsScreen extends StatefulWidget {
 }
 
 class _MyListingsScreenState extends State<MyListingsScreen> {
-  void toggleAvailability(int index) {
-    final oldRoom = RoomDataService.ownerRooms[index];
+  final RoomService _roomService = RoomService();
+  late final Stream<List<RoomModel>> _roomsStream;
 
-    final updatedRoom = RoomModel(
-      title: oldRoom.title,
-      location: oldRoom.location,
-      price: oldRoom.price,
-      imagePath: oldRoom.imagePath,
-      gender: oldRoom.gender,
-      description: oldRoom.description,
-      isAvailable: !oldRoom.isAvailable,
-    );
-
-    setState(() {
-      RoomDataService.ownerRooms[index] = updatedRoom;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _roomsStream = _roomService.watchOwnerRooms();
   }
 
-  void confirmDelete(int index) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Delete Listing?"),
-          content: const Text(
-            "Are you sure you want to delete this room listing?",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
-              onPressed: () {
-                setState(() {
-                  RoomDataService.ownerRooms.removeAt(index);
-                });
+  Future<void> _toggleAvailability(RoomModel room, bool value) async {
+    try {
+      await _roomService.updateAvailability(room.id, value);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(friendlyRoomError(error));
+    }
+  }
 
-                Navigator.pop(context);
-              },
-              child: const Text(
-                "Delete",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
-        );
-      },
+  Future<void> _confirmDelete(RoomModel room) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Listing?'),
+        content: const Text(
+          'Are you sure you want to delete this room listing?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDelete != true) return;
+    try {
+      await _roomService.deleteRoom(room.id);
+    } catch (error) {
+      if (!mounted) return;
+      _showError(friendlyRoomError(error));
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final rooms = RoomDataService.ownerRooms;
-
     return Scaffold(
       backgroundColor: MyListingsScreen.bgColor,
       appBar: AppBar(
         backgroundColor: MyListingsScreen.bgColor,
         elevation: 0,
         title: const Text(
-          "My Listings",
+          'My Listings',
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: rooms.isEmpty
-          ? const Center(child: Text("No listings added yet"))
-          : ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: rooms.length,
-        itemBuilder: (context, index) {
-          return _ListingCard(
-            room: rooms[index],
-            onToggle: () => toggleAvailability(index),
-            onDelete: () => confirmDelete(index),
+      body: StreamBuilder<List<RoomModel>>(
+        stream: _roomsStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Your listings could not be loaded. Please check your connection and try again.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+
+          final rooms = snapshot.data ?? const <RoomModel>[];
+          if (rooms.isEmpty) {
+            return const Center(child: Text('No listings added yet'));
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: rooms.length,
+            itemBuilder: (context, index) {
+              final room = rooms[index];
+              return _ListingCard(
+                room: room,
+                onToggle: (value) => _toggleAvailability(room, value),
+                onDelete: () => _confirmDelete(room),
+              );
+            },
           );
         },
       ),
@@ -102,20 +125,18 @@ class _MyListingsScreenState extends State<MyListingsScreen> {
 }
 
 class _ListingCard extends StatelessWidget {
-  final RoomModel room;
-  final VoidCallback onToggle;
-  final VoidCallback onDelete;
-
   const _ListingCard({
     required this.room,
     required this.onToggle,
     required this.onDelete,
   });
 
+  final RoomModel room;
+  final ValueChanged<bool> onToggle;
+  final VoidCallback onDelete;
+
   @override
   Widget build(BuildContext context) {
-    final bool isAvailable = room.isAvailable;
-
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(12),
@@ -127,16 +148,13 @@ class _ListingCard extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              room.imagePath,
+            child: RoomImage(
+              source: room.primaryImage,
               height: 86,
               width: 86,
-              fit: BoxFit.cover,
             ),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,7 +175,7 @@ class _ListingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 7),
                 Text(
-                  "Rs. ${room.price}/month",
+                  'Rs. ${room.formattedMonthlyRent}/month',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
@@ -165,22 +183,21 @@ class _ListingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  isAvailable ? "Available" : "Occupied",
+                  room.isAvailable ? 'Available' : 'Occupied',
                   style: TextStyle(
-                    color: isAvailable ? Colors.green : Colors.red,
+                    color: room.isAvailable ? Colors.green : Colors.red,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
-
           Column(
             children: [
               Switch(
-                value: isAvailable,
+                value: room.isAvailable,
                 activeColor: MyListingsScreen.primaryColor,
-                onChanged: (_) => onToggle(),
+                onChanged: onToggle,
               ),
               IconButton(
                 onPressed: onDelete,

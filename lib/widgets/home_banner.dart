@@ -32,7 +32,7 @@ class HomeBanner extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1)),
                 SizedBox(height: 8),
-                Text("Verified rooms,\ncloser to campus",
+                Text("Room options,\ncloser to campus",
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 21,
