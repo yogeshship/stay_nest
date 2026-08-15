@@ -13,13 +13,31 @@ class InquiriesScreen extends StatefulWidget {
 }
 
 class _InquiriesScreenState extends State<InquiriesScreen> {
-  void updateInquiryStatus(int index, String status) {
-    setState(() {
-      InquiryService.updateStatus(index, status);
-    });
+  late final InquiryService _inquiryService;
+  late final Stream<List<InquiryModel>> _inquiriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _inquiryService = InquiryService();
+    _inquiriesStream = _inquiryService.watchOwnerInquiries();
   }
 
-  Future<void> scheduleVisit(int index) async {
+  Future<void> updateInquiryStatus(String inquiryId, String status) async {
+    try {
+      await _inquiryService.updateStatus(
+        inquiryId: inquiryId,
+        status: status,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyInquiryError(error))),
+      );
+    }
+  }
+
+  Future<void> scheduleVisit(String inquiryId) async {
     final now = DateTime.now();
     final date = await showDatePicker(
       context: context,
@@ -49,7 +67,20 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
       time.minute,
     );
 
-    setState(() => InquiryService.scheduleVisit(index, scheduledVisit));
+    try {
+      await _inquiryService.scheduleVisit(
+        inquiryId: inquiryId,
+        scheduledVisitAt: scheduledVisit,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyInquiryError(error))),
+      );
+      return;
+    }
+
+    if (!mounted) return;
 
     final dateLabel = MaterialLocalizations.of(context).formatMediumDate(date);
     final timeLabel = time.format(context);
@@ -64,8 +95,6 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final inquiries = InquiryService.inquiries;
-
     return Scaffold(
       backgroundColor: InquiriesScreen.bgColor,
       appBar: AppBar(
@@ -77,26 +106,44 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: inquiries.isEmpty
-          ? const Center(
-              child: Text(
-                "No inquiries yet",
-                style: TextStyle(color: Colors.black54),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: inquiries.length,
-              itemBuilder: (context, index) {
-                return _InquiryCard(
-                  inquiry: inquiries[index],
-                  onAccept: () => updateInquiryStatus(index, "Accepted"),
-                  onReject: () => updateInquiryStatus(index, "Rejected"),
-                  onSchedule: () => scheduleVisit(index),
-                  onComplete: () => updateInquiryStatus(index, "Completed"),
-                );
-              },
-            ),
+      body: StreamBuilder<List<InquiryModel>>(
+        stream: _inquiriesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(child: Text('Inquiries could not be loaded.'));
+          }
+          final inquiries = snapshot.data ?? const <InquiryModel>[];
+          if (inquiries.isEmpty) {
+            return const Center(child: Text('No inquiries yet'));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: inquiries.length,
+            itemBuilder: (context, index) {
+              final inquiry = inquiries[index];
+              return _InquiryCard(
+                inquiry: inquiry,
+                onAccept: () => updateInquiryStatus(
+                  inquiry.id,
+                  InquiryModel.acceptedStatus,
+                ),
+                onReject: () => updateInquiryStatus(
+                  inquiry.id,
+                  InquiryModel.declinedStatus,
+                ),
+                onSchedule: () => scheduleVisit(inquiry.id),
+                onComplete: () => updateInquiryStatus(
+                  inquiry.id,
+                  InquiryModel.completedStatus,
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -117,24 +164,20 @@ class _InquiryCard extends StatelessWidget {
   });
 
   Color getStatusColor() {
-    if (inquiry.status == "Accepted") return Colors.green;
-    if (inquiry.status == "Rejected") return Colors.red;
-    if (inquiry.status == "Visit Scheduled") return Colors.orange;
-    if (inquiry.status == "Completed") return Colors.blue;
+    if (inquiry.status == InquiryModel.acceptedStatus) return Colors.green;
+    if (inquiry.status == InquiryModel.declinedStatus) return Colors.red;
+    if (inquiry.status == InquiryModel.completedStatus) return Colors.blue;
     return InquiriesScreen.primaryColor;
   }
 
   String getStatusMessage() {
-    if (inquiry.status == "Accepted") {
+    if (inquiry.status == InquiryModel.acceptedStatus) {
       return "Accepted — StayNest will coordinate visit with customer.";
     }
-    if (inquiry.status == "Rejected") {
-      return "Rejected — This inquiry is closed.";
+    if (inquiry.status == InquiryModel.declinedStatus) {
+      return "Declined — This inquiry is closed.";
     }
-    if (inquiry.status == "Visit Scheduled") {
-      return "Visit confirmed — Please be available at the scheduled time.";
-    }
-    if (inquiry.status == "Completed") {
+    if (inquiry.status == InquiryModel.completedStatus) {
       return "Completed — Visit process has been completed.";
     }
     return "Pending — Waiting for owner response.";
@@ -142,9 +185,12 @@ class _InquiryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isPending = inquiry.status == "Pending";
-    final bool isAccepted = inquiry.status == "Accepted";
-    final bool isScheduled = inquiry.status == "Visit Scheduled";
+    final bool isPending = inquiry.status == InquiryModel.pendingStatus;
+    final bool canSchedule = inquiry.status == InquiryModel.acceptedStatus &&
+        inquiry.type == InquiryModel.visitRequestType;
+    final bool canComplete = inquiry.status == InquiryModel.acceptedStatus &&
+        (inquiry.type == InquiryModel.inquiryType ||
+            inquiry.scheduledVisitAt != null);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -167,7 +213,7 @@ class _InquiryCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(inquiry.customerName,
+                    Text(inquiry.customerDisplayName,
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
                     Text(inquiry.roomTitle,
@@ -181,14 +227,17 @@ class _InquiryCard extends StatelessWidget {
                 ),
               ),
               Text(
-                inquiry.time,
+                inquiry.createdAt == null
+                    ? 'New'
+                    : TimeOfDay.fromDateTime(inquiry.createdAt!.toLocal())
+                        .format(context),
                 style: const TextStyle(color: Colors.black45, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            inquiry.type,
+            inquiry.typeLabel,
             style: const TextStyle(
               color: InquiriesScreen.primaryColor,
               fontWeight: FontWeight.bold,
@@ -205,7 +254,7 @@ class _InquiryCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              inquiry.status,
+              inquiry.statusLabel,
               style: TextStyle(
                 color: getStatusColor(),
                 fontWeight: FontWeight.bold,
@@ -217,9 +266,9 @@ class _InquiryCard extends StatelessWidget {
             getStatusMessage(),
             style: const TextStyle(color: Colors.black54, fontSize: 12),
           ),
-          if (inquiry.scheduledVisit != null) ...[
+          if (inquiry.scheduledVisitAt != null) ...[
             const SizedBox(height: 14),
-            _ScheduleSummary(scheduledVisit: inquiry.scheduledVisit!),
+            _ScheduleSummary(scheduledVisit: inquiry.scheduledVisitAt!),
           ],
           if (isPending) ...[
             const SizedBox(height: 14),
@@ -245,7 +294,7 @@ class _InquiryCard extends StatelessWidget {
               ],
             ),
           ],
-          if (isAccepted) ...[
+          if (canSchedule) ...[
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -254,14 +303,16 @@ class _InquiryCard extends StatelessWidget {
                   backgroundColor: Colors.orange,
                 ),
                 onPressed: onSchedule,
-                child: const Text(
-                  "Schedule Visit",
-                  style: TextStyle(color: Colors.white),
+                child: Text(
+                  inquiry.scheduledVisitAt == null
+                      ? "Schedule Visit"
+                      : "Change Visit Time",
+                  style: const TextStyle(color: Colors.white),
                 ),
               ),
             ),
           ],
-          if (isScheduled) ...[
+          if (canComplete) ...[
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,

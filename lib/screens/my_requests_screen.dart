@@ -3,22 +3,31 @@ import '../services/inquiry_service.dart';
 import '../models/inquiry_model.dart';
 import '../widgets/scheduled_visit_card.dart';
 
-class MyRequestsScreen extends StatelessWidget {
+class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
 
   static const Color bgColor = Color(0xFFF8F7FC);
   static const Color primaryColor = Color(0xFF6C3BFF);
 
   @override
-  Widget build(BuildContext context) {
-    final requests = InquiryService.inquiries
-        .where((inquiry) => inquiry.isVisibleToCustomer)
-        .toList();
+  State<MyRequestsScreen> createState() => _MyRequestsScreenState();
+}
 
+class _MyRequestsScreenState extends State<MyRequestsScreen> {
+  late final Stream<List<InquiryModel>> _inquiriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _inquiriesStream = InquiryService().watchCustomerInquiries();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      backgroundColor: MyRequestsScreen.bgColor,
       appBar: AppBar(
-        backgroundColor: bgColor,
+        backgroundColor: MyRequestsScreen.bgColor,
         elevation: 0,
         title: const Text(
           "My Room Requests",
@@ -26,20 +35,27 @@ class MyRequestsScreen extends StatelessWidget {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: requests.isEmpty
-          ? const Center(
-              child: Text(
-                "No room requests yet",
-                style: TextStyle(color: Colors.black54),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: requests.length,
-              itemBuilder: (context, index) {
-                return _RequestCard(inquiry: requests[index]);
-              },
-            ),
+      body: StreamBuilder<List<InquiryModel>>(
+        stream: _inquiriesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(child: Text('Requests could not be loaded.'));
+          }
+          final requests = snapshot.data ?? const <InquiryModel>[];
+          if (requests.isEmpty) {
+            return const Center(child: Text('No room requests yet'));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: requests.length,
+            itemBuilder: (context, index) =>
+                _RequestCard(inquiry: requests[index]),
+          );
+        },
+      ),
     );
   }
 }
@@ -50,10 +66,9 @@ class _RequestCard extends StatelessWidget {
   const _RequestCard({required this.inquiry});
 
   Color getStatusColor() {
-    if (inquiry.status == "Accepted") return Colors.green;
-    if (inquiry.status == "Rejected") return Colors.red;
-    if (inquiry.status == "Visit Scheduled") return Colors.orange;
-    if (inquiry.status == "Completed") return Colors.blue;
+    if (inquiry.status == InquiryModel.acceptedStatus) return Colors.green;
+    if (inquiry.status == InquiryModel.declinedStatus) return Colors.red;
+    if (inquiry.status == InquiryModel.completedStatus) return Colors.blue;
     return MyRequestsScreen.primaryColor;
   }
 
@@ -75,22 +90,24 @@ class _RequestCard extends StatelessWidget {
           Text(inquiry.roomLocation,
               style: const TextStyle(color: Colors.black54)),
           const SizedBox(height: 8),
-          Text(inquiry.type),
+          Text(inquiry.typeLabel),
           const SizedBox(height: 10),
           Text(
-            inquiry.status,
+            inquiry.statusLabel,
             style: TextStyle(
               color: getStatusColor(),
               fontWeight: FontWeight.bold,
             ),
           ),
-          if (inquiry.scheduledVisit != null) ...[
+          if (inquiry.scheduledVisitAt != null) ...[
             const SizedBox(height: 14),
-            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisit!),
+            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisitAt!),
           ],
           const SizedBox(height: 6),
           Text(
-            "Requested at ${inquiry.time}",
+            inquiry.createdAt == null
+                ? 'Sending…'
+                : 'Requested ${MaterialLocalizations.of(context).formatMediumDate(inquiry.createdAt!.toLocal())}',
             style: const TextStyle(color: Colors.black45, fontSize: 12),
           ),
         ],

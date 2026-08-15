@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import '../services/saved_rooms_service.dart';
 import '../services/inquiry_service.dart';
+import '../models/inquiry_model.dart';
 import 'saved_screen.dart';
 import 'messages_screen.dart';
 import 'my_requests_screen.dart';
@@ -20,10 +21,6 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int inquiryCount = InquiryService.inquiries
-        .where((inquiry) => inquiry.isVisibleToCustomer)
-        .length;
-
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
@@ -53,10 +50,7 @@ class ProfileScreen extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _ProfileStatCard(
-                  title: "Inquiries",
-                  value: inquiryCount.toString(),
-                ),
+                child: _CustomerInquiryCount(),
               ),
             ],
           ),
@@ -154,6 +148,32 @@ class ProfileScreen extends StatelessWidget {
 class _SavedRoomCount extends StatefulWidget {
   @override
   State<_SavedRoomCount> createState() => _SavedRoomCountState();
+}
+
+class _CustomerInquiryCount extends StatefulWidget {
+  @override
+  State<_CustomerInquiryCount> createState() => _CustomerInquiryCountState();
+}
+
+class _CustomerInquiryCountState extends State<_CustomerInquiryCount> {
+  late final Stream<List<InquiryModel>> _inquiriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _inquiriesStream = InquiryService().watchCustomerInquiries();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<InquiryModel>>(
+      stream: _inquiriesStream,
+      builder: (context, snapshot) => _ProfileStatCard(
+        title: 'Inquiries',
+        value: snapshot.hasError ? '—' : '${snapshot.data?.length ?? 0}',
+      ),
+    );
+  }
 }
 
 class _SavedRoomCountState extends State<_SavedRoomCount> {

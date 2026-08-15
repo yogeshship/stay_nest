@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../models/inquiry_model.dart';
 import '../models/room_model.dart';
+import '../models/inquiry_model.dart';
 import '../services/inquiry_service.dart';
 import '../widgets/room_image.dart';
 
-class RoomDetailScreen extends StatelessWidget {
+class RoomDetailScreen extends StatefulWidget {
   const RoomDetailScreen({
     super.key,
     required this.room,
@@ -13,25 +13,42 @@ class RoomDetailScreen extends StatelessWidget {
 
   final RoomModel room;
 
-  void _sendInquiry(BuildContext context, String type) {
-    final inquiry = InquiryModel(
-      customerName: 'Customer User',
-      roomTitle: room.title,
-      roomLocation: room.location,
-      type: type,
-      message: type == 'Visit Request'
-          ? 'Customer requested to visit this room.'
-          : 'Customer sent an inquiry about this room.',
-      time: TimeOfDay.now().format(context),
-    );
+  @override
+  State<RoomDetailScreen> createState() => _RoomDetailScreenState();
+}
 
-    InquiryService.addInquiry(inquiry);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$type sent to StayNest team'),
-        backgroundColor: const Color(0xFF6C3BFF),
-      ),
-    );
+class _RoomDetailScreenState extends State<RoomDetailScreen> {
+  final InquiryService _inquiryService = InquiryService();
+  bool _isSubmitting = false;
+
+  Future<void> _sendInquiry(String type) async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await _inquiryService.createInquiry(
+        room: widget.room,
+        type: type,
+        message: type == InquiryModel.visitRequestType
+            ? 'Customer requested to visit this room.'
+            : 'Customer sent an inquiry about this room.',
+      );
+      if (!mounted) return;
+      final label =
+          type == InquiryModel.visitRequestType ? 'Visit request' : 'Inquiry';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$label sent successfully'),
+          backgroundColor: const Color(0xFF6C3BFF),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyInquiryError(error))),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -44,7 +61,7 @@ class RoomDetailScreen extends StatelessWidget {
             Stack(
               children: [
                 RoomImage(
-                  source: room.primaryImage,
+                  source: widget.room.primaryImage,
                   height: 280,
                   width: double.infinity,
                 ),
@@ -67,14 +84,15 @@ class RoomDetailScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Chip(
-                    label: Text(room.isAvailable ? 'Available' : 'Occupied'),
-                    backgroundColor: room.isAvailable
+                    label: Text(
+                        widget.room.isAvailable ? 'Available' : 'Occupied'),
+                    backgroundColor: widget.room.isAvailable
                         ? const Color(0xFFE8F5E9)
                         : const Color(0xFFFFEBEE),
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    room.title,
+                    widget.room.title,
                     style: const TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.bold,
@@ -85,12 +103,12 @@ class RoomDetailScreen extends StatelessWidget {
                     children: [
                       const Icon(Icons.location_on_outlined, size: 18),
                       const SizedBox(width: 4),
-                      Expanded(child: Text(room.location)),
+                      Expanded(child: Text(widget.room.location)),
                     ],
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Rs. ${room.formattedMonthlyRent}/month',
+                    'Rs. ${widget.room.formattedMonthlyRent}/month',
                     style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -99,7 +117,7 @@ class RoomDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   Text(
-                    'Gender Preference: ${room.genderPreference}',
+                    'Gender Preference: ${widget.room.genderPreference}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 24),
@@ -140,7 +158,7 @@ class RoomDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    room.description,
+                    widget.room.description,
                     style: const TextStyle(
                       fontSize: 15,
                       color: Colors.black54,
@@ -152,8 +170,9 @@ class RoomDetailScreen extends StatelessWidget {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: room.isAvailable
-                              ? () => _sendInquiry(context, 'Visit Request')
+                          onPressed: widget.room.isAvailable && !_isSubmitting
+                              ? () =>
+                                  _sendInquiry(InquiryModel.visitRequestType)
                               : null,
                           icon: const Icon(Icons.calendar_month),
                           label: const Text('Request Visit'),
@@ -165,8 +184,8 @@ class RoomDetailScreen extends StatelessWidget {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6C3BFF),
                           ),
-                          onPressed: room.isAvailable
-                              ? () => _sendInquiry(context, 'Inquiry')
+                          onPressed: widget.room.isAvailable && !_isSubmitting
+                              ? () => _sendInquiry(InquiryModel.inquiryType)
                               : null,
                           icon: const Icon(Icons.message, color: Colors.white),
                           label: const Text(

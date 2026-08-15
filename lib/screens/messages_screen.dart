@@ -14,10 +14,21 @@ class MessagesScreen extends StatefulWidget {
 }
 
 class _MessagesScreenState extends State<MessagesScreen> {
+  late final InquiryService _inquiryService;
+  late final Stream<List<InquiryModel>> _inquiriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _inquiryService = InquiryService();
+    _inquiriesStream = _inquiryService.watchCustomerInquiries();
+  }
+
   void confirmDelete(InquiryModel inquiry) {
+    final messenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text("Delete Message?"),
           content: const Text(
@@ -25,23 +36,23 @@ class _MessagesScreenState extends State<MessagesScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
               ),
-              onPressed: () {
-                final originalIndex = InquiryService.inquiries.indexOf(inquiry);
-
-                if (originalIndex != -1) {
-                  setState(() {
-                    InquiryService.hideFromCustomer(originalIndex);
-                  });
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                try {
+                  await _inquiryService.hideForCustomer(inquiry.id);
+                } catch (error) {
+                  if (!mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(friendlyInquiryError(error))),
+                  );
                 }
-
-                Navigator.pop(context);
               },
               child: const Text(
                 "Delete",
@@ -56,10 +67,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final inquiries = InquiryService.inquiries
-        .where((inquiry) => inquiry.isVisibleToCustomer)
-        .toList();
-
     return Scaffold(
       backgroundColor: MessagesScreen.bgColor,
       appBar: AppBar(
@@ -74,25 +81,32 @@ class _MessagesScreenState extends State<MessagesScreen> {
         ),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
-      body: inquiries.isEmpty
-          ? const Center(
-              child: Text(
-                "No messages yet",
-                style: TextStyle(color: Colors.black54),
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: inquiries.length,
-              itemBuilder: (context, index) {
-                final inquiry = inquiries[index];
-
-                return _MessageCard(
-                  inquiry: inquiry,
-                  onDelete: () => confirmDelete(inquiry),
-                );
-              },
-            ),
+      body: StreamBuilder<List<InquiryModel>>(
+        stream: _inquiriesStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const Center(child: Text('Messages could not be loaded.'));
+          }
+          final inquiries = snapshot.data ?? const <InquiryModel>[];
+          if (inquiries.isEmpty) {
+            return const Center(child: Text('No messages yet'));
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: inquiries.length,
+            itemBuilder: (context, index) {
+              final inquiry = inquiries[index];
+              return _MessageCard(
+                inquiry: inquiry,
+                onDelete: () => confirmDelete(inquiry),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -108,13 +122,11 @@ class _MessageCard extends StatelessWidget {
 
   Color getStatusColor() {
     switch (inquiry.status) {
-      case "Accepted":
+      case InquiryModel.acceptedStatus:
         return Colors.green;
-      case "Rejected":
+      case InquiryModel.declinedStatus:
         return Colors.red;
-      case "Visit Scheduled":
-        return Colors.orange;
-      case "Completed":
+      case InquiryModel.completedStatus:
         return Colors.blue;
       default:
         return MessagesScreen.primaryColor;
@@ -123,13 +135,11 @@ class _MessageCard extends StatelessWidget {
 
   String getMessageText() {
     switch (inquiry.status) {
-      case "Accepted":
+      case InquiryModel.acceptedStatus:
         return "Your inquiry was accepted. StayNest will coordinate the visit.";
-      case "Rejected":
+      case InquiryModel.declinedStatus:
         return "Your inquiry was rejected.";
-      case "Visit Scheduled":
-        return "Your room visit has been scheduled.";
-      case "Completed":
+      case InquiryModel.completedStatus:
         return "Your room visit process has been completed.";
       default:
         return "Your inquiry is pending owner response.";
@@ -181,7 +191,7 @@ class _MessageCard extends StatelessWidget {
                     Text(getMessageText()),
                     const SizedBox(height: 8),
                     Text(
-                      inquiry.status,
+                      inquiry.statusLabel,
                       style: TextStyle(
                         color: getStatusColor(),
                         fontWeight: FontWeight.bold,
@@ -194,7 +204,7 @@ class _MessageCard extends StatelessWidget {
               Column(
                 children: [
                   Text(
-                    inquiry.time,
+                    _formatCreatedAt(context, inquiry.createdAt),
                     style: const TextStyle(
                       color: Colors.black45,
                       fontSize: 12,
@@ -211,12 +221,17 @@ class _MessageCard extends StatelessWidget {
               ),
             ],
           ),
-          if (inquiry.scheduledVisit != null) ...[
+          if (inquiry.scheduledVisitAt != null) ...[
             const SizedBox(height: 14),
-            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisit!),
+            ScheduledVisitCard(scheduledVisit: inquiry.scheduledVisitAt!),
           ],
         ],
       ),
     );
   }
+}
+
+String _formatCreatedAt(BuildContext context, DateTime? value) {
+  if (value == null) return 'Sending…';
+  return TimeOfDay.fromDateTime(value.toLocal()).format(context);
 }

@@ -6,6 +6,7 @@ import '../services/user_service.dart';
 import '../models/room_model.dart';
 import '../services/room_service.dart';
 import '../services/inquiry_service.dart';
+import '../models/inquiry_model.dart';
 import 'my_listings_screen.dart';
 import 'inquiries_screen.dart';
 import 'help_support_screen.dart';
@@ -19,8 +20,6 @@ class OwnerProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final int inquiryCount = InquiryService.inquiries.length;
-
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
@@ -50,10 +49,7 @@ class OwnerProfileScreen extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _OwnerStatCard(
-                  title: "Inquiries",
-                  value: inquiryCount.toString(),
-                ),
+                child: _OwnerInquiryCount(),
               ),
             ],
           ),
@@ -133,6 +129,32 @@ class OwnerProfileScreen extends StatelessWidget {
 class _OwnerListingCount extends StatefulWidget {
   @override
   State<_OwnerListingCount> createState() => _OwnerListingCountState();
+}
+
+class _OwnerInquiryCount extends StatefulWidget {
+  @override
+  State<_OwnerInquiryCount> createState() => _OwnerInquiryCountState();
+}
+
+class _OwnerInquiryCountState extends State<_OwnerInquiryCount> {
+  late final Stream<List<InquiryModel>> _inquiriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _inquiriesStream = InquiryService().watchOwnerInquiries();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<InquiryModel>>(
+      stream: _inquiriesStream,
+      builder: (context, snapshot) => _OwnerStatCard(
+        title: 'Inquiries',
+        value: snapshot.hasError ? '—' : '${snapshot.data?.length ?? 0}',
+      ),
+    );
+  }
 }
 
 class _OwnerListingCountState extends State<_OwnerListingCount> {

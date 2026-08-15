@@ -115,6 +115,45 @@ service cloud.firestore {
         && saveId == resource.data.customerId + '_' + resource.data.roomId;
     }
 
+    match /inquiries/{inquiryId} {
+      allow read: if (isActiveCustomer()
+          && resource.data.customerId == request.auth.uid)
+        || (isActiveOwner()
+          && resource.data.ownerId == request.auth.uid);
+
+      allow create: if isActiveCustomer()
+        && request.resource.data.keys().hasOnly([
+          'roomId',
+          'customerId',
+          'ownerId',
+          'type',
+          'message',
+          'status',
+          'scheduledVisitAt',
+          'hiddenByCustomer',
+          'createdAt',
+          'updatedAt',
+          'roomTitle',
+          'roomLocation',
+          'customerDisplayName'
+        ])
+        && hasValidInquiryFields(request.resource.data)
+        && request.resource.data.customerId == request.auth.uid
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
+        && request.resource.data.ownerId == get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.ownerId
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.isAvailable == true
+        && request.resource.data.status == 'pending'
+        && request.resource.data.scheduledVisitAt == null
+        && request.resource.data.hiddenByCustomer == false
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isValidCustomerInquiryUpdate()
+        || isValidOwnerInquiryUpdate();
+
+      allow delete: if false;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -156,6 +195,71 @@ service cloud.firestore {
         && data.isAvailable is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
+    }
+
+    function hasValidInquiryFields(data) {
+      return data.roomId is string
+        && data.roomId.size() > 0
+        && data.customerId is string
+        && data.customerId.size() > 0
+        && data.ownerId is string
+        && data.ownerId.size() > 0
+        && data.type in ['inquiry', 'visitRequest']
+        && data.message is string
+        && data.message.size() > 0
+        && data.status in [
+          'pending',
+          'accepted',
+          'declined',
+          'completed',
+          'cancelled'
+        ]
+        && (data.scheduledVisitAt == null
+          || data.scheduledVisitAt is timestamp)
+        && data.hiddenByCustomer is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.roomTitle is string
+        && data.roomLocation is string
+        && data.customerDisplayName is string;
+    }
+
+    function isValidCustomerInquiryUpdate() {
+      return isActiveCustomer()
+        && resource.data.customerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'hiddenByCustomer',
+          'updatedAt'
+        ])
+        && request.resource.data.hiddenByCustomer == true
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidOwnerInquiryUpdate() {
+      return isActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'scheduledVisitAt',
+          'updatedAt'
+        ])
+        && hasValidInquiryFields(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && isValidOwnerStatusTransition(
+          resource.data.status,
+          request.resource.data.status
+        )
+        && (request.resource.data.scheduledVisitAt == resource.data.scheduledVisitAt
+          || (resource.data.type == 'visitRequest'
+            && resource.data.status == 'accepted'
+            && request.resource.data.status == 'accepted'
+            && request.resource.data.scheduledVisitAt is timestamp));
+    }
+
+    function isValidOwnerStatusTransition(from, to) {
+      return from == to
+        || (from == 'pending' && to in ['accepted', 'declined'])
+        || (from == 'accepted' && to == 'completed');
     }
   }
 }
