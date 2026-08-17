@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 
 import 'package:stay_nest/main.dart';
 import 'package:stay_nest/models/room_model.dart';
@@ -6,6 +7,10 @@ import 'package:stay_nest/models/inquiry_model.dart';
 import 'package:stay_nest/models/app_user_model.dart';
 import 'package:stay_nest/models/verification_request_model.dart';
 import 'package:stay_nest/screens/welcome_screen.dart';
+import 'package:stay_nest/screens/admin_verification_dashboard_screen.dart';
+import 'package:stay_nest/screens/auth_gate.dart';
+import 'package:stay_nest/screens/owner_login_screen.dart';
+import 'package:stay_nest/services/admin_verification_service.dart';
 import 'package:stay_nest/services/storage_service.dart';
 import 'package:stay_nest/widgets/room_image.dart';
 
@@ -148,4 +153,185 @@ void main() {
       isTrue,
     );
   });
+
+  test('Only active admin profiles satisfy the admin model helper', () {
+    AppUserModel profile(String role, {bool isActive = true}) => AppUserModel(
+          uid: 'user-id',
+          email: 'user@example.com',
+          fullName: 'Test User',
+          phoneNumber: '',
+          role: role,
+          verificationStatus: AppUserModel.notRequestedVerification,
+          isActive: isActive,
+        );
+
+    expect(profile(AppUserModel.adminRole).isActiveAdmin, isTrue);
+    expect(
+      profile(AppUserModel.adminRole, isActive: false).isActiveAdmin,
+      isFalse,
+    );
+    expect(profile(AppUserModel.ownerRole).isActiveAdmin, isFalse);
+    expect(profile(AppUserModel.customerRole).isActiveAdmin, isFalse);
+  });
+
+  test('Active admin role maps to the admin dashboard', () {
+    const admin = AppUserModel(
+      uid: 'admin-id',
+      email: 'admin@example.com',
+      fullName: 'Test Admin',
+      phoneNumber: '',
+      role: AppUserModel.adminRole,
+      verificationStatus: AppUserModel.notRequestedVerification,
+      isActive: true,
+    );
+    const inactiveAdmin = AppUserModel(
+      uid: 'admin-id',
+      email: 'admin@example.com',
+      fullName: 'Test Admin',
+      phoneNumber: '',
+      role: AppUserModel.adminRole,
+      verificationStatus: AppUserModel.notRequestedVerification,
+      isActive: false,
+    );
+
+    expect(homeForActiveRole(admin), isA<AdminVerificationDashboardScreen>());
+    expect(homeForActiveRole(inactiveAdmin), isNull);
+  });
+
+  testWidgets('Owner login success delegates to its AuthGate builder',
+      (WidgetTester tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (builderContext) {
+            context = builderContext;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+
+    final destination = ownerLoginDestinationAfterAuthentication(
+      context,
+      authGateBuilder: (_) => const Text('AuthGate destination'),
+    );
+
+    expect(destination, isA<Text>());
+    expect((destination as Text).data, 'AuthGate destination');
+  });
+
+  test('Owner login role gate accepts only active owners and admins', () {
+    AppUserModel profile(String role, {bool isActive = true}) => AppUserModel(
+          uid: 'user-id',
+          email: 'user@example.com',
+          fullName: 'Test User',
+          phoneNumber: '',
+          role: role,
+          verificationStatus: AppUserModel.notRequestedVerification,
+          isActive: isActive,
+        );
+
+    expect(
+      ownerLoginEligibility(profile(AppUserModel.ownerRole)),
+      OwnerLoginEligibility.allowed,
+    );
+    expect(
+      ownerLoginEligibility(profile(AppUserModel.adminRole)),
+      OwnerLoginEligibility.allowed,
+    );
+    expect(
+      ownerLoginEligibility(profile(AppUserModel.customerRole)),
+      OwnerLoginEligibility.unsupportedRole,
+    );
+    expect(
+      ownerLoginEligibility(
+        profile(AppUserModel.ownerRole, isActive: false),
+      ),
+      OwnerLoginEligibility.inactive,
+    );
+    expect(
+      ownerLoginEligibility(
+        profile(AppUserModel.adminRole, isActive: false),
+      ),
+      OwnerLoginEligibility.inactive,
+    );
+    expect(
+      ownerLoginEligibility(null),
+      OwnerLoginEligibility.missingProfile,
+    );
+  });
+
+  test('Rejection reason validation trims and enforces 500 characters', () {
+    expect(validateRejectionReason(null), isNotNull);
+    expect(validateRejectionReason('   '), isNotNull);
+    expect(validateRejectionReason('Missing details'), isNull);
+    expect(validateRejectionReason(List.filled(500, 'x').join()), isNull);
+    expect(validateRejectionReason(List.filled(501, 'x').join()), isNotNull);
+  });
+
+  testWidgets('Admin dashboard shows its empty state',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminVerificationDashboardScreen(
+          adminVerificationService: _TestAdminVerificationService(
+            Stream.value(const []),
+          ),
+          signOutOverride: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('No pending requests'), findsOneWidget);
+  });
+
+  testWidgets('Admin dashboard shows pending owner information',
+      (WidgetTester tester) async {
+    final request = VerificationRequestModel(
+      id: 'owner-id',
+      ownerId: 'owner-id',
+      status: VerificationRequestModel.pendingStatus,
+      ownerDisplayName: 'Pending Owner',
+      ownerEmail: 'pending@example.com',
+      submittedAt: DateTime(2026, 8, 17, 10),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AdminVerificationDashboardScreen(
+          adminVerificationService: _TestAdminVerificationService(
+            Stream.value([request]),
+          ),
+          signOutOverride: () async {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Pending Owner'), findsOneWidget);
+    expect(find.text('pending@example.com'), findsOneWidget);
+    expect(find.text('Approve'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
+  });
+}
+
+class _TestAdminVerificationService implements AdminVerificationService {
+  _TestAdminVerificationService(this.requests);
+
+  final Stream<List<VerificationRequestModel>> requests;
+
+  @override
+  Stream<List<VerificationRequestModel>> watchPendingVerificationRequests() =>
+      requests;
+
+  @override
+  Future<void> approveVerificationRequest(String ownerUid) async {}
+
+  @override
+  Future<void> rejectVerificationRequest(
+    String ownerUid,
+    String reason,
+  ) async {}
 }

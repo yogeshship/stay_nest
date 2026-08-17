@@ -1,9 +1,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../models/app_user_model.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
-import 'owner_home_screen.dart';
+import 'auth_gate.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
   const OwnerLoginScreen({super.key});
@@ -43,21 +44,27 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
       final profile = firebaseUser == null
           ? null
           : await _userService.getUserProfile(firebaseUser.uid);
-
-      if (profile == null || profile.role != 'owner' || !profile.isActive) {
+      final eligibility = ownerLoginEligibility(profile);
+      if (eligibility != OwnerLoginEligibility.allowed) {
         await _authService.signOut();
         if (!mounted) return;
-        _showError(
-          profile != null && !profile.isActive
-              ? 'This owner account is inactive. Please contact StayNest support.'
-              : 'This account is not registered as an owner. Please use Customer Login or contact StayNest support.',
-        );
+        _showError(switch (eligibility) {
+          OwnerLoginEligibility.missingProfile =>
+            'This account is missing its StayNest profile. Please contact StayNest support.',
+          OwnerLoginEligibility.inactive =>
+            'This account is inactive. Please contact StayNest support.',
+          OwnerLoginEligibility.unsupportedRole =>
+            'This account is not registered as an owner or administrator. Please use Customer Login.',
+          OwnerLoginEligibility.allowed => throw StateError('Unreachable'),
+        });
         return;
       }
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const OwnerHomeScreen()),
+        MaterialPageRoute(
+          builder: ownerLoginDestinationAfterAuthentication,
+        ),
         (route) => false,
       );
     } on FirebaseAuthException catch (error) {
@@ -182,6 +189,32 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
       ),
     );
   }
+}
+
+enum OwnerLoginEligibility {
+  allowed,
+  missingProfile,
+  inactive,
+  unsupportedRole,
+}
+
+OwnerLoginEligibility ownerLoginEligibility(AppUserModel? profile) {
+  if (profile == null) return OwnerLoginEligibility.missingProfile;
+  if (!profile.isActive) return OwnerLoginEligibility.inactive;
+  if (profile.role == AppUserModel.ownerRole ||
+      profile.role == AppUserModel.adminRole) {
+    return OwnerLoginEligibility.allowed;
+  }
+  return OwnerLoginEligibility.unsupportedRole;
+}
+
+Widget _buildAuthGate(BuildContext context) => AuthGate();
+
+Widget ownerLoginDestinationAfterAuthentication(
+  BuildContext context, {
+  WidgetBuilder authGateBuilder = _buildAuthGate,
+}) {
+  return authGateBuilder(context);
 }
 
 class _LoginField extends StatelessWidget {

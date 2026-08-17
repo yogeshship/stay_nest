@@ -34,7 +34,8 @@ class VerificationService {
       }
 
       final profile = AppUserModel.fromFirestore(userDocument);
-      if (profile.uid != authenticatedUser.uid || profile.role != 'owner') {
+      if (profile.uid != authenticatedUser.uid ||
+          profile.role != AppUserModel.ownerRole) {
         throw StateError(
             'Only an authenticated owner can request verification.');
       }

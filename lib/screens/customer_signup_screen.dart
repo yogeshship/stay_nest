@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
-import 'home_screen.dart';
+import 'auth_gate.dart';
 
 class CustomerSignupScreen extends StatefulWidget {
   const CustomerSignupScreen({super.key});
@@ -76,7 +76,7 @@ class _CustomerSignupScreenState extends State<CustomerSignupScreen> {
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => AuthGate()),
         (route) => false,
       );
     } on FirebaseAuthException catch (error) {

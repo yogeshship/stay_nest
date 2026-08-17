@@ -3,7 +3,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read: if isSignedIn() && isOwner(userId);
+      allow get: if (isSignedIn() && isOwner(userId))
+        || isActiveAdmin();
+
+      allow list: if false;
 
       allow create: if isSignedIn()
         && isOwner(userId)
@@ -29,7 +32,8 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if isSafeOwnProfileUpdate(userId)
-        || isVerificationSubmissionUserUpdate(userId);
+        || isVerificationSubmissionUserUpdate(userId)
+        || isAdminVerificationUserUpdate(userId);
 
       allow delete: if false;
     }
@@ -147,8 +151,9 @@ service cloud.firestore {
     }
 
     match /verificationRequests/{ownerId} {
-      allow read: if isActiveOwner()
-        && ownerId == request.auth.uid;
+      allow read: if (isActiveOwner()
+          && ownerId == request.auth.uid)
+        || isActiveAdmin();
 
       allow create: if isActiveOwner()
         && ownerId == request.auth.uid
@@ -165,22 +170,23 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus in ['notRequested', 'rejected']
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'pending';
 
-      allow update: if isActiveOwner()
-        && ownerId == request.auth.uid
-        && resource.data.ownerId == request.auth.uid
-        && resource.data.status == 'rejected'
-        && request.resource.data.keys().hasOnly([
-          'ownerId',
-          'status',
-          'submittedAt',
-          'updatedAt',
-          'rejectionReason',
-          'ownerDisplayName',
-          'ownerEmail'
-        ])
-        && hasValidPendingVerificationRequest(request.resource.data, ownerId)
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'rejected'
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'pending';
+      allow update: if (isActiveOwner()
+          && ownerId == request.auth.uid
+          && resource.data.ownerId == request.auth.uid
+          && resource.data.status == 'rejected'
+          && request.resource.data.keys().hasOnly([
+            'ownerId',
+            'status',
+            'submittedAt',
+            'updatedAt',
+            'rejectionReason',
+            'ownerDisplayName',
+            'ownerEmail'
+          ])
+          && hasValidPendingVerificationRequest(request.resource.data, ownerId)
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'rejected'
+          && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'pending')
+        || isAdminVerificationRequestUpdate(ownerId);
 
       allow delete: if false;
     }
@@ -203,6 +209,14 @@ service cloud.firestore {
     function isVerifiedActiveOwner() {
       return isActiveOwner()
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'approved';
+    }
+
+    function isActiveAdmin() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
     }
 
     function isActiveCustomer() {
@@ -294,6 +308,55 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.submittedAt == request.time
         && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.updatedAt == request.time
         && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.rejectionReason == null;
+    }
+
+    function isAdminVerificationUserUpdate(userId) {
+      return isActiveAdmin()
+        && resource.data.uid == userId
+        && resource.data.role == 'owner'
+        && resource.data.isActive == true
+        && resource.data.verificationStatus == 'pending'
+        && request.resource.data.verificationStatus in ['approved', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'verificationStatus',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && exists(/databases/$(database)/documents/verificationRequests/$(userId))
+        && get(/databases/$(database)/documents/verificationRequests/$(userId)).data.ownerId == userId
+        && get(/databases/$(database)/documents/verificationRequests/$(userId)).data.status == 'pending'
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.ownerId == userId
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.status == request.resource.data.verificationStatus
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.updatedAt == request.time;
+    }
+
+    function isAdminVerificationRequestUpdate(ownerId) {
+      return isActiveAdmin()
+        && resource.data.ownerId == ownerId
+        && resource.data.status == 'pending'
+        && request.resource.data.status in ['approved', 'rejected']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'rejectionReason',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && ((request.resource.data.status == 'approved'
+            && request.resource.data.rejectionReason == null)
+          || (request.resource.data.status == 'rejected'
+            && request.resource.data.rejectionReason is string
+            && request.resource.data.rejectionReason.size() >= 1
+            && request.resource.data.rejectionReason.size() <= 500))
+        && exists(/databases/$(database)/documents/users/$(ownerId))
+        && get(/databases/$(database)/documents/users/$(ownerId)).data.uid == ownerId
+        && get(/databases/$(database)/documents/users/$(ownerId)).data.role == 'owner'
+        && get(/databases/$(database)/documents/users/$(ownerId)).data.isActive == true
+        && get(/databases/$(database)/documents/users/$(ownerId)).data.verificationStatus == 'pending'
+        && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.uid == ownerId
+        && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.role == 'owner'
+        && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.isActive == true
+        && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.verificationStatus == request.resource.data.status
+        && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.updatedAt == request.time;
     }
 
     function hasValidPendingVerificationRequest(data, ownerId) {

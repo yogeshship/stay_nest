@@ -5,6 +5,7 @@ import '../models/app_user_model.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import 'home_screen.dart';
+import 'admin_verification_dashboard_screen.dart';
 import 'owner_home_screen.dart';
 import 'welcome_screen.dart';
 
@@ -69,20 +70,27 @@ class AuthGate extends StatelessWidget {
               );
             }
 
-            return switch (profile.role) {
-              'customer' => const HomeScreen(),
-              'owner' => const OwnerHomeScreen(),
-              _ => _AccessProblemScreen(
+            return homeForActiveRole(profile) ??
+                _AccessProblemScreen(
                   message:
                       'This account has an invalid role. Access has been denied. Please contact StayNest support.',
                   authService: _authService,
-                ),
-            };
+                );
           },
         );
       },
     );
   }
+}
+
+Widget? homeForActiveRole(AppUserModel profile) {
+  if (!profile.isActive) return null;
+  return switch (profile.role) {
+    AppUserModel.customerRole => const HomeScreen(),
+    AppUserModel.ownerRole => const OwnerHomeScreen(),
+    AppUserModel.adminRole => const AdminVerificationDashboardScreen(),
+    _ => null,
+  };
 }
 
 class _LoadingScreen extends StatelessWidget {

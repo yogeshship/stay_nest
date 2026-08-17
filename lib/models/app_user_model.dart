@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AppUserModel {
+  static const customerRole = 'customer';
+  static const ownerRole = 'owner';
+  static const adminRole = 'admin';
+
   static const notRequestedVerification = 'notRequested';
   static const pendingVerification = 'pending';
   static const approvedVerification = 'approved';
@@ -29,10 +33,14 @@ class AppUserModel {
   final DateTime? updatedAt;
 
   bool get isVerifiedOwner =>
-      role == 'owner' && isActive && verificationStatus == approvedVerification;
+      role == ownerRole &&
+      isActive &&
+      verificationStatus == approvedVerification;
+
+  bool get isActiveAdmin => role == adminRole && isActive;
 
   bool get canRequestOwnerVerification =>
-      role == 'owner' &&
+      role == ownerRole &&
       isActive &&
       (verificationStatus == notRequestedVerification ||
           verificationStatus == rejectedVerification);
