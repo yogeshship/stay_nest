@@ -26,7 +26,7 @@ class TrustVerificationScreen extends StatelessWidget {
             icon: Icons.person_outline_rounded,
             title: "Owner Information",
             text:
-                "Formal owner verification and approval will be introduced in a later phase.",
+                "Owners must receive StayNest verification approval before publishing listings or responding to customer requests.",
           ),
           _TrustCard(
             icon: Icons.home_work_outlined,

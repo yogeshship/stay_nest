@@ -28,16 +28,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
-      allow update: if isSignedIn()
-        && isOwner(userId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'fullName',
-          'phoneNumber',
-          'updatedAt'
-        ])
-        && request.resource.data.fullName is string
-        && request.resource.data.phoneNumber is string
-        && request.resource.data.updatedAt == request.time;
+      allow update: if isSafeOwnProfileUpdate(userId)
+        || isVerificationSubmissionUserUpdate(userId);
 
       allow delete: if false;
     }
@@ -48,7 +40,7 @@ service cloud.firestore {
           || resource.data.ownerId == request.auth.uid
           || hasSavedRoom(roomId));
 
-      allow create: if isActiveOwner()
+      allow create: if isVerifiedActiveOwner()
         && request.resource.data.keys().hasOnly([
           'ownerId',
           'title',
@@ -66,7 +58,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
-      allow update: if isActiveOwner()
+      allow update: if isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.keys().hasOnly([
           'ownerId',
@@ -85,7 +77,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.updatedAt == request.time;
 
-      allow delete: if isActiveOwner()
+      allow delete: if isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid;
     }
 
@@ -154,6 +146,45 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /verificationRequests/{ownerId} {
+      allow read: if isActiveOwner()
+        && ownerId == request.auth.uid;
+
+      allow create: if isActiveOwner()
+        && ownerId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'status',
+          'submittedAt',
+          'updatedAt',
+          'rejectionReason',
+          'ownerDisplayName',
+          'ownerEmail'
+        ])
+        && hasValidPendingVerificationRequest(request.resource.data, ownerId)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus in ['notRequested', 'rejected']
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'pending';
+
+      allow update: if isActiveOwner()
+        && ownerId == request.auth.uid
+        && resource.data.ownerId == request.auth.uid
+        && resource.data.status == 'rejected'
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'status',
+          'submittedAt',
+          'updatedAt',
+          'rejectionReason',
+          'ownerDisplayName',
+          'ownerEmail'
+        ])
+        && hasValidPendingVerificationRequest(request.resource.data, ownerId)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'rejected'
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'pending';
+
+      allow delete: if false;
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -167,6 +198,11 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+
+    function isVerifiedActiveOwner() {
+      return isActiveOwner()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.verificationStatus == 'approved';
     }
 
     function isActiveCustomer() {
@@ -224,6 +260,55 @@ service cloud.firestore {
         && data.customerDisplayName is string;
     }
 
+    function isSafeOwnProfileUpdate(userId) {
+      return isSignedIn()
+        && isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'fullName',
+          'phoneNumber',
+          'updatedAt'
+        ])
+        && request.resource.data.fullName is string
+        && request.resource.data.phoneNumber is string
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isVerificationSubmissionUserUpdate(userId) {
+      return isSignedIn()
+        && isOwner(userId)
+        && resource.data.role == 'owner'
+        && resource.data.isActive == true
+        && request.resource.data.verificationStatus == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'verificationStatus',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt == request.time
+        && ((resource.data.verificationStatus == 'notRequested'
+            && !exists(/databases/$(database)/documents/verificationRequests/$(userId)))
+          || (resource.data.verificationStatus == 'rejected'
+            && exists(/databases/$(database)/documents/verificationRequests/$(userId))
+            && get(/databases/$(database)/documents/verificationRequests/$(userId)).data.status == 'rejected'))
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.ownerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.status == 'pending'
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.submittedAt == request.time
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/verificationRequests/$(userId)).data.rejectionReason == null;
+    }
+
+    function hasValidPendingVerificationRequest(data, ownerId) {
+      return data.ownerId == request.auth.uid
+        && ownerId == request.auth.uid
+        && data.status == 'pending'
+        && data.submittedAt == request.time
+        && data.updatedAt == request.time
+        && data.rejectionReason == null
+        && data.ownerDisplayName is string
+        && data.ownerDisplayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.fullName
+        && data.ownerEmail is string
+        && data.ownerEmail == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email;
+    }
+
     function isValidCustomerInquiryUpdate() {
       return isActiveCustomer()
         && resource.data.customerId == request.auth.uid
@@ -236,7 +321,7 @@ service cloud.firestore {
     }
 
     function isValidOwnerInquiryUpdate() {
-      return isActiveOwner()
+      return isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',

@@ -2,14 +2,20 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/room_model.dart';
+import 'storage_service.dart';
 
 class RoomService {
-  RoomService({FirebaseFirestore? firestore, FirebaseAuth? firebaseAuth})
-      : _firestore = firestore ?? FirebaseFirestore.instance,
-        _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+  RoomService({
+    FirebaseFirestore? firestore,
+    FirebaseAuth? firebaseAuth,
+    StorageService? storageService,
+  })  : _firestore = firestore ?? FirebaseFirestore.instance,
+        _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
+        _storageService = storageService ?? StorageService();
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _firebaseAuth;
+  final StorageService _storageService;
 
   CollectionReference<Map<String, dynamic>> get _rooms =>
       _firestore.collection('rooms');
@@ -32,7 +38,13 @@ class RoomService {
     return document.exists ? RoomModel.fromFirestore(document) : null;
   }
 
-  Future<String> addRoom({
+  String createRoomId() {
+    _requireAuthenticatedUid();
+    return _rooms.doc().id;
+  }
+
+  Future<void> addRoomWithId({
+    required String roomId,
     required String title,
     required String location,
     required num monthlyRent,
@@ -41,7 +53,14 @@ class RoomService {
     required List<String> imageUrls,
   }) async {
     final ownerId = _requireAuthenticatedUid();
-    final document = _rooms.doc();
+    _validateRoomId(roomId);
+    if (imageUrls.isEmpty ||
+        imageUrls.any((url) =>
+            !url.startsWith('https://firebasestorage.googleapis.com/'))) {
+      throw ArgumentError(
+          'New rooms require uploaded Firebase Storage images.');
+    }
+    final document = _rooms.doc(roomId);
     await document.set({
       'ownerId': ownerId,
       'title': title.trim(),
@@ -54,7 +73,6 @@ class RoomService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    return document.id;
   }
 
   Future<void> updateRoom({
@@ -66,7 +84,14 @@ class RoomService {
     required String description,
     required List<String> imageUrls,
   }) async {
-    _requireAuthenticatedUid();
+    final ownerId = _requireAuthenticatedUid();
+    _validateRoomId(roomId);
+    final currentRoom = await _requireOwnedRoom(roomId, ownerId);
+    if (imageUrls.isEmpty ||
+        imageUrls.any((url) =>
+            !url.startsWith('https://firebasestorage.googleapis.com/'))) {
+      throw ArgumentError('Room images must be Firebase Storage URLs.');
+    }
     await _rooms.doc(roomId).update({
       'title': title.trim(),
       'location': location.trim(),
@@ -76,6 +101,13 @@ class RoomService {
       'imageUrls': imageUrls,
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    final replacedUrls = currentRoom.imageUrls
+        .where((url) => !imageUrls.contains(url))
+        .toList(growable: false);
+    await _storageService.deleteRoomImageUrls(
+      roomId: roomId,
+      urls: replacedUrls,
+    );
   }
 
   Future<void> updateAvailability(String roomId, bool isAvailable) async {
@@ -87,8 +119,36 @@ class RoomService {
   }
 
   Future<void> deleteRoom(String roomId) async {
-    _requireAuthenticatedUid();
+    final ownerId = _requireAuthenticatedUid();
+    _validateRoomId(roomId);
+    await _requireOwnedRoom(roomId, ownerId);
     await _rooms.doc(roomId).delete();
+    try {
+      if (_requireAuthenticatedUid() != ownerId) {
+        throw StateError('The signed-in owner changed during deletion.');
+      }
+      await _storageService.deleteRoomImages(roomId: roomId);
+    } catch (_) {
+      throw StateError(
+        'The room listing was deleted, but some image files could not be cleaned up. They are now orphaned and may require a later cleanup.',
+      );
+    }
+  }
+
+  Future<RoomModel> _requireOwnedRoom(String roomId, String ownerId) async {
+    final document = await _rooms.doc(roomId).get();
+    if (!document.exists) throw StateError('This room no longer exists.');
+    final room = RoomModel.fromFirestore(document);
+    if (room.ownerId != ownerId) {
+      throw StateError('You can only manage your own room images.');
+    }
+    return room;
+  }
+
+  void _validateRoomId(String roomId) {
+    if (roomId.trim().isEmpty || roomId.contains('/')) {
+      throw ArgumentError('A valid room ID is required.');
+    }
   }
 
   String _requireAuthenticatedUid() {
@@ -119,6 +179,11 @@ String friendlyRoomError(Object error) {
       'not-found' => 'This room no longer exists.',
       _ => 'The room could not be saved. Please try again.',
     };
+  }
+  if (error is ArgumentError || error is StateError) {
+    return error
+        .toString()
+        .replaceFirst(RegExp(r'^(Invalid argument|Bad state): '), '');
   }
   return 'The room could not be saved. Please try again.';
 }

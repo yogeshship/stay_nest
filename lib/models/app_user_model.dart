@@ -1,6 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AppUserModel {
+  static const notRequestedVerification = 'notRequested';
+  static const pendingVerification = 'pending';
+  static const approvedVerification = 'approved';
+  static const rejectedVerification = 'rejected';
+
   const AppUserModel({
     required this.uid,
     required this.email,
@@ -22,6 +27,15 @@ class AppUserModel {
   final bool isActive;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  bool get isVerifiedOwner =>
+      role == 'owner' && isActive && verificationStatus == approvedVerification;
+
+  bool get canRequestOwnerVerification =>
+      role == 'owner' &&
+      isActive &&
+      (verificationStatus == notRequestedVerification ||
+          verificationStatus == rejectedVerification);
 
   factory AppUserModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> document,

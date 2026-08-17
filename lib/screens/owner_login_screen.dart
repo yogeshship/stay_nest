@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import 'owner_home_screen.dart';
-import 'owner_verification_request_screen.dart';
 
 class OwnerLoginScreen extends StatefulWidget {
   const OwnerLoginScreen({super.key});
@@ -153,37 +152,26 @@ class _OwnerLoginScreenState extends State<OwnerLoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                GestureDetector(
-                  onTap: _isSubmitting
-                      ? null
-                      : () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  const OwnerVerificationRequestScreen(),
-                            ),
-                          ),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE0D7FF)),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Want to list your property?',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 16)),
-                        SizedBox(height: 6),
-                        Text(
-                          'Tap here to request owner verification. Requests are not connected to Firebase yet.',
-                          style: TextStyle(color: Colors.black54, height: 1.4),
-                        ),
-                      ],
-                    ),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFE0D7FF)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Owner verification',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16)),
+                      SizedBox(height: 6),
+                      Text(
+                        'Sign in with your owner account, then open Verification Status from your profile to request approval.',
+                        style: TextStyle(color: Colors.black54, height: 1.4),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 40),

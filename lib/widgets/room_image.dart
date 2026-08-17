@@ -18,12 +18,20 @@ class RoomImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (source.startsWith('http://') || source.startsWith('https://')) {
+    if (isNetworkRoomImageSource(source)) {
       return Image.network(
         source,
         height: height,
         width: width,
         fit: fit,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return SizedBox(
+            height: height,
+            width: width,
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        },
         errorBuilder: (_, __, ___) => _fallback(),
       );
     }
@@ -46,3 +54,6 @@ class RoomImage extends StatelessWidget {
     );
   }
 }
+
+bool isNetworkRoomImageSource(String source) =>
+    source.startsWith('http://') || source.startsWith('https://');

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
+import '../models/app_user_model.dart';
 import '../models/room_model.dart';
 import '../services/room_service.dart';
 import '../services/inquiry_service.dart';
@@ -10,6 +11,7 @@ import '../models/inquiry_model.dart';
 import 'my_listings_screen.dart';
 import 'inquiries_screen.dart';
 import 'help_support_screen.dart';
+import 'owner_verification_request_screen.dart';
 import 'welcome_screen.dart';
 
 class OwnerProfileScreen extends StatelessWidget {
@@ -234,10 +236,25 @@ class _OwnerVerificationStatusOption extends StatelessWidget {
       stream: UserService().watchUserProfile(firebaseUser.uid),
       builder: (context, snapshot) {
         final status = snapshot.data?.verificationStatus ?? 'Unavailable';
+        final isApproved = status == AppUserModel.approvedVerification;
         return _OwnerProfileOption(
-          icon: Icons.verified_user_outlined,
+          icon: isApproved
+              ? Icons.verified_rounded
+              : Icons.verified_user_outlined,
           title: 'Verification Status',
-          subtitle: status,
+          subtitle: switch (status) {
+            AppUserModel.approvedVerification => 'Verified Owner',
+            AppUserModel.pendingVerification => 'Under review',
+            AppUserModel.rejectedVerification => 'Rejected — request again',
+            AppUserModel.notRequestedVerification => 'Not requested',
+            _ => 'Unavailable',
+          },
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const OwnerVerificationRequestScreen(),
+            ),
+          ),
         );
       },
     );

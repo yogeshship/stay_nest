@@ -32,7 +32,7 @@ class HelpSupportScreen extends StatelessWidget {
             icon: Icons.home_work_outlined,
             title: "For Room Owners",
             text:
-                "Owner verification and approval will be introduced in a later phase.",
+                "Owner verification requests are reviewed by trusted StayNest project administration.",
           ),
           _SupportCard(
             icon: Icons.report_problem_outlined,

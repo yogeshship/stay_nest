@@ -3,10 +3,14 @@ import '../models/room_model.dart';
 import '../models/inquiry_model.dart';
 import '../services/room_service.dart';
 import '../services/inquiry_service.dart';
+import '../services/auth_service.dart';
+import '../services/user_service.dart';
+import '../models/app_user_model.dart';
 import 'add_room_screen.dart';
 import 'my_listings_screen.dart';
 import 'inquiries_screen.dart';
 import 'owner_profile_screen.dart';
+import 'owner_verification_request_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
   const OwnerHomeScreen({super.key});
@@ -21,12 +25,16 @@ class OwnerHomeScreen extends StatefulWidget {
 class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   late final Stream<List<RoomModel>> _roomsStream;
   late final Stream<List<InquiryModel>> _inquiriesStream;
+  late final Stream<AppUserModel?> _profileStream;
 
   @override
   void initState() {
     super.initState();
     _roomsStream = RoomService().watchOwnerRooms();
     _inquiriesStream = InquiryService().watchOwnerInquiries();
+    final owner = AuthService().currentUser;
+    if (owner == null) throw StateError('An owner must be signed in.');
+    _profileStream = UserService().watchUserProfile(owner.uid);
   }
 
   Future<void> openScreen(Widget screen) async {
@@ -67,11 +75,21 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
             },
           ),
           const SizedBox(height: 24),
-          _OwnerActionCard(
-            icon: Icons.add_home_work_rounded,
-            title: "Add Room",
-            subtitle: "Post a new room or hostel listing",
-            onTap: () => openScreen(const AddRoomScreen()),
+          StreamBuilder<AppUserModel?>(
+            stream: _profileStream,
+            builder: (context, snapshot) {
+              final isVerified = snapshot.data?.isVerifiedOwner == true;
+              return _OwnerActionCard(
+                icon: Icons.add_home_work_rounded,
+                title: "Add Room",
+                subtitle: isVerified
+                    ? "Post a new room or hostel listing"
+                    : "Owner verification approval required",
+                onTap: () => isVerified
+                    ? openScreen(const AddRoomScreen())
+                    : _openVerificationPrompt(),
+              );
+            },
           ),
           _OwnerActionCard(
             icon: Icons.home_work_outlined,
@@ -94,6 +112,31 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _openVerificationPrompt() async {
+    final openVerification = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Verification required'),
+        content: const Text(
+          'Your owner verification must be approved before you can add a room listing.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('View Verification'),
+          ),
+        ],
+      ),
+    );
+    if (openVerification == true && mounted) {
+      await openScreen(const OwnerVerificationRequestScreen());
+    }
   }
 }
 

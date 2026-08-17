@@ -1,0 +1,22 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /room_images/{ownerId}/{roomId}/{fileName} {
+      allow read: if request.auth != null;
+
+      allow create, update: if isMatchingActiveOwner(ownerId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if isMatchingActiveOwner(ownerId);
+    }
+
+    function isMatchingActiveOwner(ownerId) {
+      return request.auth != null
+        && request.auth.uid == ownerId
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'owner'
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+  }
+}
