@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
       allow get: if (isSignedIn() && isOwner(userId))
-        || isActiveAdmin();
+        || isAdminReadingPendingOwner(userId);
 
       allow list: if false;
 
@@ -22,12 +22,21 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.uid is string
+        && request.resource.data.uid.size() > 0
+        && request.resource.data.uid.size() <= 128
         && request.resource.data.email == request.auth.token.email
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0
+        && request.resource.data.email.size() <= 320
         && request.resource.data.role == 'customer'
         && request.resource.data.verificationStatus == 'notRequested'
         && request.resource.data.isActive == true
         && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 120
         && request.resource.data.phoneNumber is string
+        && request.resource.data.phoneNumber.size() <= 30
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
@@ -62,24 +71,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time;
 
-      allow update: if isVerifiedActiveOwner()
-        && resource.data.ownerId == request.auth.uid
-        && request.resource.data.keys().hasOnly([
-          'ownerId',
-          'title',
-          'location',
-          'monthlyRent',
-          'genderPreference',
-          'description',
-          'imageUrls',
-          'isAvailable',
-          'createdAt',
-          'updatedAt'
-        ])
-        && hasValidRoomFields(request.resource.data)
-        && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
+      allow update: if isValidRoomAvailabilityUpdate()
+        || isValidRoomDetailsUpdate();
 
       allow delete: if isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid;
@@ -98,6 +91,7 @@ service cloud.firestore {
         && request.resource.data.customerId == request.auth.uid
         && request.resource.data.roomId is string
         && request.resource.data.roomId.size() > 0
+        && request.resource.data.roomId.size() <= 128
         && request.resource.data.savedAt == request.time
         && saveId == request.auth.uid + '_' + request.resource.data.roomId
         && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
@@ -138,6 +132,9 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
         && request.resource.data.ownerId == get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.ownerId
         && get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.isAvailable == true
+        && request.resource.data.roomTitle == get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.title
+        && request.resource.data.roomLocation == get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.location
+        && request.resource.data.customerDisplayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.fullName
         && request.resource.data.status == 'pending'
         && request.resource.data.scheduledVisitAt == null
         && request.resource.data.hiddenByCustomer == false
@@ -145,15 +142,19 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if isValidCustomerInquiryUpdate()
-        || isValidOwnerInquiryUpdate();
+        || isValidOwnerInquiryStatusUpdate()
+        || isValidOwnerVisitSchedulingUpdate();
 
       allow delete: if false;
     }
 
     match /verificationRequests/{ownerId} {
-      allow read: if (isActiveOwner()
+      allow get: if (isActiveOwner()
           && ownerId == request.auth.uid)
-        || isActiveAdmin();
+        || (isActiveAdmin() && resource.data.status == 'pending');
+
+      allow list: if isActiveAdmin()
+        && resource.data.status == 'pending';
 
       allow create: if isActiveOwner()
         && ownerId == request.auth.uid
@@ -203,6 +204,7 @@ service cloud.firestore {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid == request.auth.uid
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
     }
 
@@ -219,10 +221,22 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
     }
 
+    function isAdminReadingPendingOwner(userId) {
+      return isActiveAdmin()
+        && resource.data.uid == userId
+        && resource.data.role == 'owner'
+        && resource.data.isActive == true
+        && resource.data.verificationStatus == 'pending'
+        && exists(/databases/$(database)/documents/verificationRequests/$(userId))
+        && get(/databases/$(database)/documents/verificationRequests/$(userId)).data.ownerId == userId
+        && get(/databases/$(database)/documents/verificationRequests/$(userId)).data.status == 'pending';
+    }
+
     function isActiveCustomer() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.uid == request.auth.uid
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true;
     }
 
@@ -233,30 +247,76 @@ service cloud.firestore {
 
     function hasValidRoomFields(data) {
       return data.ownerId is string
+        && data.ownerId.size() > 0
+        && data.ownerId.size() <= 128
         && data.title is string
         && data.title.size() > 0
+        && data.title.size() <= 150
         && data.location is string
         && data.location.size() > 0
+        && data.location.size() <= 200
         && data.monthlyRent is number
         && data.monthlyRent > 0
+        && data.monthlyRent <= 1000000000
         && data.genderPreference is string
+        && data.genderPreference.size() <= 50
         && data.description is string
+        && data.description.size() <= 5000
         && data.imageUrls is list
+        && data.imageUrls.size() <= 10
         && data.isAvailable is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
 
+    function isValidRoomAvailabilityUpdate() {
+      return isVerifiedActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isAvailable',
+          'updatedAt'
+        ])
+        && request.resource.data.isAvailable is bool
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidRoomDetailsUpdate() {
+      return isVerifiedActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'ownerId',
+          'title',
+          'location',
+          'monthlyRent',
+          'genderPreference',
+          'description',
+          'imageUrls',
+          'isAvailable',
+          'createdAt',
+          'updatedAt'
+        ])
+        && hasValidRoomFields(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function hasValidInquiryFields(data) {
       return data.roomId is string
         && data.roomId.size() > 0
+        && data.roomId.size() <= 128
         && data.customerId is string
         && data.customerId.size() > 0
+        && data.customerId.size() <= 128
         && data.ownerId is string
         && data.ownerId.size() > 0
+        && data.ownerId.size() <= 128
         && data.type in ['inquiry', 'visitRequest']
         && data.message is string
         && data.message.size() > 0
+        && data.message.size() <= 2000
         && data.status in [
           'pending',
           'accepted',
@@ -270,8 +330,14 @@ service cloud.firestore {
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
         && data.roomTitle is string
+        && data.roomTitle.size() > 0
+        && data.roomTitle.size() <= 150
         && data.roomLocation is string
-        && data.customerDisplayName is string;
+        && data.roomLocation.size() > 0
+        && data.roomLocation.size() <= 200
+        && data.customerDisplayName is string
+        && data.customerDisplayName.size() > 0
+        && data.customerDisplayName.size() <= 120;
     }
 
     function isSafeOwnProfileUpdate(userId) {
@@ -283,7 +349,10 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.fullName.size() <= 120
         && request.resource.data.phoneNumber is string
+        && request.resource.data.phoneNumber.size() <= 30
         && request.resource.data.updatedAt == request.time;
     }
 
@@ -367,8 +436,12 @@ service cloud.firestore {
         && data.updatedAt == request.time
         && data.rejectionReason == null
         && data.ownerDisplayName is string
+        && data.ownerDisplayName.size() > 0
+        && data.ownerDisplayName.size() <= 120
         && data.ownerDisplayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.fullName
         && data.ownerEmail is string
+        && data.ownerEmail.size() > 0
+        && data.ownerEmail.size() <= 320
         && data.ownerEmail == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email;
     }
 
@@ -379,34 +452,42 @@ service cloud.firestore {
           'hiddenByCustomer',
           'updatedAt'
         ])
+        && resource.data.hiddenByCustomer == false
         && request.resource.data.hiddenByCustomer == true
         && request.resource.data.updatedAt == request.time;
     }
 
-    function isValidOwnerInquiryUpdate() {
+    function isValidOwnerInquiryStatusUpdate() {
       return isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
-          'scheduledVisitAt',
           'updatedAt'
         ])
-        && hasValidInquiryFields(request.resource.data)
         && request.resource.data.updatedAt == request.time
         && isValidOwnerStatusTransition(
           resource.data.status,
           request.resource.data.status
-        )
-        && (request.resource.data.scheduledVisitAt == resource.data.scheduledVisitAt
-          || (resource.data.type == 'visitRequest'
-            && resource.data.status == 'accepted'
-            && request.resource.data.status == 'accepted'
-            && request.resource.data.scheduledVisitAt is timestamp));
+        );
+    }
+
+    function isValidOwnerVisitSchedulingUpdate() {
+      return isVerifiedActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'scheduledVisitAt',
+          'updatedAt'
+        ])
+        && resource.data.type == 'visitRequest'
+        && resource.data.status == 'accepted'
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.scheduledVisitAt is timestamp
+        && request.resource.data.scheduledVisitAt > request.time
+        && request.resource.data.updatedAt == request.time;
     }
 
     function isValidOwnerStatusTransition(from, to) {
-      return from == to
-        || (from == 'pending' && to in ['accepted', 'declined'])
+      return (from == 'pending' && to in ['accepted', 'declined'])
         || (from == 'accepted' && to == 'completed');
     }
   }

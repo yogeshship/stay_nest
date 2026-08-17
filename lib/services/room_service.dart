@@ -54,6 +54,14 @@ class RoomService {
   }) async {
     final ownerId = _requireAuthenticatedUid();
     _validateRoomId(roomId);
+    validateRoomFields(
+      title: title,
+      location: location,
+      monthlyRent: monthlyRent,
+      genderPreference: genderPreference,
+      description: description,
+      imageUrls: imageUrls,
+    );
     if (imageUrls.isEmpty ||
         imageUrls.any((url) =>
             !url.startsWith('https://firebasestorage.googleapis.com/'))) {
@@ -86,6 +94,14 @@ class RoomService {
   }) async {
     final ownerId = _requireAuthenticatedUid();
     _validateRoomId(roomId);
+    validateRoomFields(
+      title: title,
+      location: location,
+      monthlyRent: monthlyRent,
+      genderPreference: genderPreference,
+      description: description,
+      imageUrls: imageUrls,
+    );
     final currentRoom = await _requireOwnedRoom(roomId, ownerId);
     if (imageUrls.isEmpty ||
         imageUrls.any((url) =>
@@ -146,7 +162,7 @@ class RoomService {
   }
 
   void _validateRoomId(String roomId) {
-    if (roomId.trim().isEmpty || roomId.contains('/')) {
+    if (roomId.trim().isEmpty || roomId.length > 128 || roomId.contains('/')) {
       throw ArgumentError('A valid room ID is required.');
     }
   }
@@ -177,6 +193,10 @@ String friendlyRoomError(Object error) {
       'unavailable' =>
         'The room service is temporarily unavailable. Please try again.',
       'not-found' => 'This room no longer exists.',
+      'aborted' =>
+        'The room changed while it was being saved. Please try again.',
+      'failed-precondition' =>
+        'The room is no longer in a state that can be changed.',
       _ => 'The room could not be saved. Please try again.',
     };
   }
@@ -186,4 +206,31 @@ String friendlyRoomError(Object error) {
         .replaceFirst(RegExp(r'^(Invalid argument|Bad state): '), '');
   }
   return 'The room could not be saved. Please try again.';
+}
+
+void validateRoomFields({
+  required String title,
+  required String location,
+  required num monthlyRent,
+  required String genderPreference,
+  required String description,
+  required List<String> imageUrls,
+}) {
+  void requireLength(String value, String label, int maximum) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed.length > maximum) {
+      throw ArgumentError('$label must be between 1 and $maximum characters.');
+    }
+  }
+
+  requireLength(title, 'Title', 150);
+  requireLength(location, 'Location', 200);
+  requireLength(genderPreference, 'Gender preference', 50);
+  requireLength(description, 'Description', 5000);
+  if (monthlyRent <= 0 || monthlyRent > 1000000000) {
+    throw ArgumentError('Monthly rent must be greater than 0 and realistic.');
+  }
+  if (imageUrls.length > 10) {
+    throw ArgumentError('A room cannot contain more than 10 image references.');
+  }
 }

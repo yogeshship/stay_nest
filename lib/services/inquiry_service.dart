@@ -27,9 +27,7 @@ class InquiryService {
     if (!InquiryModel.validTypes.contains(type)) {
       throw ArgumentError('Choose a valid inquiry type.');
     }
-    if (message.trim().isEmpty) {
-      throw ArgumentError('The inquiry message cannot be empty.');
-    }
+    validateInquiryMessage(message);
 
     final roomDocument =
         await _firestore.collection('rooms').doc(room.id).get();
@@ -44,6 +42,9 @@ class InquiryService {
 
     final profile = await _firestore.collection('users').doc(customerId).get();
     final displayName = (profile.data()?['fullName'] as String?)?.trim();
+    if (displayName == null || displayName.isEmpty) {
+      throw StateError('Your customer profile is missing its display name.');
+    }
     final document = _inquiries.doc();
     await document.set({
       'roomId': currentRoom.id,
@@ -58,8 +59,7 @@ class InquiryService {
       'updatedAt': FieldValue.serverTimestamp(),
       'roomTitle': currentRoom.title,
       'roomLocation': currentRoom.location,
-      'customerDisplayName':
-          displayName?.isNotEmpty == true ? displayName : 'StayNest customer',
+      'customerDisplayName': displayName,
     });
     return document.id;
   }
@@ -122,6 +122,7 @@ class InquiryService {
   }) async {
     final ownerId = _requireAuthenticatedUid();
     _validateDocumentId(inquiryId);
+    validateScheduledVisitAt(scheduledVisitAt);
     await _firestore.runTransaction((transaction) async {
       final reference = _inquiries.doc(inquiryId);
       final document = await transaction.get(reference);
@@ -182,7 +183,9 @@ class InquiryService {
   }
 
   void _validateDocumentId(String inquiryId) {
-    if (inquiryId.trim().isEmpty || inquiryId.contains('/')) {
+    if (inquiryId.trim().isEmpty ||
+        inquiryId.length > 128 ||
+        inquiryId.contains('/')) {
       throw ArgumentError('A valid inquiry ID is required.');
     }
   }
@@ -196,6 +199,10 @@ String friendlyInquiryError(Object error) {
       'unavailable' =>
         'The inquiry service is temporarily unavailable. Please try again.',
       'not-found' => 'This inquiry or room no longer exists.',
+      'aborted' =>
+        'This inquiry changed while it was being updated. Please try again.',
+      'failed-precondition' =>
+        'This inquiry is no longer in a state that can be changed.',
       _ => 'The inquiry could not be updated. Please try again.',
     };
   }
@@ -205,4 +212,19 @@ String friendlyInquiryError(Object error) {
         .replaceFirst(RegExp(r'^(Invalid argument|Bad state): '), '');
   }
   return 'The inquiry could not be updated. Please try again.';
+}
+
+void validateInquiryMessage(String message) {
+  final trimmed = message.trim();
+  if (trimmed.isEmpty || trimmed.length > 2000) {
+    throw ArgumentError(
+      'The inquiry message must be between 1 and 2000 characters.',
+    );
+  }
+}
+
+void validateScheduledVisitAt(DateTime scheduledVisitAt, {DateTime? now}) {
+  if (!scheduledVisitAt.isAfter(now ?? DateTime.now())) {
+    throw ArgumentError('Choose a visit time in the future.');
+  }
 }

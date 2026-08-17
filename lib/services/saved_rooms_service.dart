@@ -102,6 +102,7 @@ class SavedRoomsService {
   }
 
   Future<void> saveRoom(String roomId) async {
+    validateSavedRoomId(roomId);
     final customerId = _requireAuthenticatedUid();
     await _savedRooms.doc(_saveId(customerId, roomId)).set({
       'customerId': customerId,
@@ -111,6 +112,7 @@ class SavedRoomsService {
   }
 
   Future<void> unsaveRoom(String roomId) async {
+    validateSavedRoomId(roomId);
     final customerId = _requireAuthenticatedUid();
     await _savedRooms.doc(_saveId(customerId, roomId)).delete();
   }
@@ -135,6 +137,13 @@ class SavedRoomsService {
   String _saveId(String customerId, String roomId) => '${customerId}_$roomId';
 }
 
+void validateSavedRoomId(String roomId) {
+  final trimmed = roomId.trim();
+  if (trimmed.isEmpty || trimmed.length > 128 || trimmed.contains('/')) {
+    throw ArgumentError('A valid room ID is required.');
+  }
+}
+
 String friendlySavedRoomError(Object error) {
   if (error is FirebaseException) {
     return switch (error.code) {
@@ -142,8 +151,14 @@ String friendlySavedRoomError(Object error) {
         'You do not have permission to change saved rooms.',
       'unavailable' =>
         'Saved rooms are temporarily unavailable. Please try again.',
+      'failed-precondition' => 'This room is no longer available to save.',
       _ => 'Saved rooms could not be updated. Please try again.',
     };
+  }
+  if (error is ArgumentError || error is StateError) {
+    return error
+        .toString()
+        .replaceFirst(RegExp(r'^(Invalid argument|Bad state): '), '');
   }
   return 'Saved rooms could not be updated. Please try again.';
 }

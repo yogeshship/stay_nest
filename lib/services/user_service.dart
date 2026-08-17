@@ -18,6 +18,10 @@ class UserService {
     required String fullName,
     required String phoneNumber,
   }) async {
+    validateUserProfileFields(
+      fullName: fullName,
+      phoneNumber: phoneNumber,
+    );
     final authenticatedUser = _firebaseAuth.currentUser;
     if (authenticatedUser == null || authenticatedUser.email == null) {
       throw StateError('An authenticated email account is required.');
@@ -60,6 +64,13 @@ class UserService {
     }
 
     final updates = <String, dynamic>{};
+    if (fullName != null || phoneNumber != null) {
+      validateUserProfileFields(
+        fullName: fullName,
+        phoneNumber: phoneNumber,
+        allowOmittedFields: true,
+      );
+    }
     if (fullName != null) updates['fullName'] = fullName.trim();
     if (phoneNumber != null) updates['phoneNumber'] = phoneNumber.trim();
     if (updates.isEmpty) return;
@@ -72,5 +83,23 @@ class UserService {
     if (_firebaseAuth.currentUser?.uid != uid) {
       throw StateError('A user may only access their own profile.');
     }
+  }
+}
+
+void validateUserProfileFields({
+  String? fullName,
+  String? phoneNumber,
+  bool allowOmittedFields = false,
+}) {
+  if (!allowOmittedFields && fullName == null) {
+    throw ArgumentError('A full name is required.');
+  }
+  final trimmedName = fullName?.trim();
+  if (trimmedName != null &&
+      (trimmedName.isEmpty || trimmedName.length > 120)) {
+    throw ArgumentError('Full name must be between 1 and 120 characters.');
+  }
+  if (phoneNumber != null && phoneNumber.trim().length > 30) {
+    throw ArgumentError('Phone number must be 30 characters or fewer.');
   }
 }
