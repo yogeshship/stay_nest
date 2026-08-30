@@ -1026,6 +1026,54 @@ test('unavailable room review visibility mirrors room visibility', async () => {
   )));
 });
 
+test('owner analytics review query supports only authorized current room batches', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'rooms/second-owned-room', data: roomData(ids.owner) },
+    { path: 'rooms/other-unavailable-room', data: roomData(ids.otherOwner, { isAvailable: false }) },
+    { path: `reviews/${ids.customer}_available-room`, data: reviewData(ids.customer, 'available-room', 'visit-a') },
+    { path: `reviews/${ids.otherCustomer}_unavailable-room`, data: reviewData(ids.otherCustomer, 'unavailable-room', 'visit-b') },
+    { path: 'reviews/customer-c_second-owned-room', data: reviewData('customer-c', 'second-owned-room', 'visit-c') },
+    { path: 'reviews/customer-d_other-unavailable-room', data: reviewData('customer-d', 'other-unavailable-room', 'visit-d') },
+  ] });
+
+  const reviewsForRooms = (uid, roomIds) => getDocs(query(
+    collection(dbFor(uid), 'reviews'),
+    where('roomId', 'in', roomIds),
+  ));
+
+  await assertSucceeds(reviewsForRooms(ids.owner, [
+    'available-room',
+    'unavailable-room',
+    'second-owned-room',
+  ]));
+  await assertFails(reviewsForRooms(ids.otherOwner, ['unavailable-room']));
+  await assertFails(reviewsForRooms(ids.owner, [
+    'available-room',
+    'other-unavailable-room',
+  ]));
+  await assertFails(getDocs(collection(dbFor(ids.owner), 'reviews')));
+  await assertSucceeds(getDocs(query(
+    collection(dbFor(ids.owner), 'reviews'),
+    where('roomId', '==', 'unavailable-room'),
+  )));
+});
+
+test('former owner cannot batch-query reviews after room deletion', async () => {
+  await seedCore({ extraSeeds: [{
+    path: `reviews/${ids.customer}_available-room`,
+    data: reviewData(ids.customer, 'available-room', 'completed-visit'),
+  }] });
+  await assertSucceeds(deleteDoc(doc(dbFor(ids.owner), 'rooms/available-room')));
+  await assertFails(getDocs(query(
+    collection(dbFor(ids.owner), 'reviews'),
+    where('roomId', 'in', ['available-room']),
+  )));
+  await assertSucceeds(getDoc(doc(
+    dbFor(ids.customer),
+    `reviews/${ids.customer}_available-room`,
+  )));
+});
+
 test('inactive customers cannot directly get existing or missing own reviews', async () => {
   await seedCore({ extraSeeds: [{
     path: `reviews/${ids.inactiveCustomer}_unavailable-room`,

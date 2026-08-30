@@ -11,9 +11,22 @@ import 'my_listings_screen.dart';
 import 'inquiries_screen.dart';
 import 'owner_profile_screen.dart';
 import 'owner_verification_request_screen.dart';
+import 'owner_analytics_screen.dart';
 
 class OwnerHomeScreen extends StatefulWidget {
-  const OwnerHomeScreen({super.key});
+  const OwnerHomeScreen({
+    super.key,
+    this.roomsStream,
+    this.inquiriesStream,
+    this.profileStream,
+    this.screenOpener,
+  });
+
+  final Stream<List<RoomModel>>? roomsStream;
+  final Stream<List<InquiryModel>>? inquiriesStream;
+  final Stream<AppUserModel?>? profileStream;
+  final Future<void> Function(BuildContext context, Widget screen)?
+      screenOpener;
 
   static const Color primaryColor = Color(0xFF6C3BFF);
   static const Color bgColor = Color(0xFFF8F7FC);
@@ -30,14 +43,22 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
   @override
   void initState() {
     super.initState();
-    _roomsStream = RoomService().watchOwnerRooms();
-    _inquiriesStream = InquiryService().watchOwnerInquiries();
-    final owner = AuthService().currentUser;
-    if (owner == null) throw StateError('An owner must be signed in.');
-    _profileStream = UserService().watchUserProfile(owner.uid);
+    _roomsStream = widget.roomsStream ?? RoomService().watchOwnerRooms();
+    _inquiriesStream =
+        widget.inquiriesStream ?? InquiryService().watchOwnerInquiries();
+    if (widget.profileStream != null) {
+      _profileStream = widget.profileStream!;
+    } else {
+      final owner = AuthService().currentUser;
+      if (owner == null) throw StateError('An owner must be signed in.');
+      _profileStream = UserService().watchUserProfile(owner.uid);
+    }
   }
 
   Future<void> openScreen(Widget screen) async {
+    if (widget.screenOpener != null) {
+      return widget.screenOpener!(context, screen);
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => screen),
@@ -56,75 +77,34 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          StreamBuilder<List<RoomModel>>(
+      body: StreamBuilder<AppUserModel?>(
+        stream: _profileStream,
+        builder: (context, profileSnapshot) {
+          return StreamBuilder<List<RoomModel>>(
             stream: _roomsStream,
-            builder: (context, snapshot) {
-              final rooms = snapshot.data ?? const <RoomModel>[];
+            builder: (context, roomSnapshot) {
               return StreamBuilder<List<InquiryModel>>(
                 stream: _inquiriesStream,
                 builder: (context, inquirySnapshot) {
+                  final rooms = roomSnapshot.data ?? const <RoomModel>[];
                   final inquiries =
                       inquirySnapshot.data ?? const <InquiryModel>[];
-                  return _StatsCard(
-                    listingCount: rooms.length,
-                    availableCount:
-                        rooms.where((room) => room.isAvailable).length,
-                    pendingCount: pendingOwnerInquiryCount(inquiries),
-                    unreadCount: unreadOwnerInquiryCount(inquiries),
+                  final profile = profileSnapshot.data;
+                  return _OwnerDashboardContent(
+                    rooms: rooms,
+                    inquiries: inquiries,
+                    profile: profile,
+                    profileLoading: profileSnapshot.connectionState ==
+                        ConnectionState.waiting,
+                    profileError: profileSnapshot.hasError,
+                    onOpen: openScreen,
+                    onVerificationRequired: _openVerificationPrompt,
                   );
                 },
               );
             },
-          ),
-          const SizedBox(height: 24),
-          StreamBuilder<AppUserModel?>(
-            stream: _profileStream,
-            builder: (context, snapshot) {
-              final isVerified = snapshot.data?.isVerifiedOwner == true;
-              return _OwnerActionCard(
-                icon: Icons.add_home_work_rounded,
-                title: "Add Room",
-                subtitle: isVerified
-                    ? "Post a new room or hostel listing"
-                    : "Owner verification approval required",
-                onTap: () => isVerified
-                    ? openScreen(const AddRoomScreen())
-                    : _openVerificationPrompt(),
-              );
-            },
-          ),
-          _OwnerActionCard(
-            icon: Icons.home_work_outlined,
-            title: "My Listings",
-            subtitle: "Manage your added rooms",
-            onTap: () => openScreen(const MyListingsScreen()),
-          ),
-          StreamBuilder<List<InquiryModel>>(
-            stream: _inquiriesStream,
-            builder: (context, snapshot) {
-              final unread = unreadOwnerInquiryCount(
-                snapshot.data ?? const <InquiryModel>[],
-              );
-              return _OwnerActionCard(
-                icon: Icons.notifications_outlined,
-                title: "Request Activity",
-                subtitle: unread == 0
-                    ? "View inquiries and visit requests"
-                    : "$unread unread request${unread == 1 ? '' : 's'}",
-                onTap: () => openScreen(const InquiriesScreen()),
-              );
-            },
-          ),
-          _OwnerActionCard(
-            icon: Icons.person_outline,
-            title: "Owner Profile",
-            subtitle: "Manage account and contact details",
-            onTap: () => openScreen(const OwnerProfileScreen()),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -152,6 +132,127 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
     if (openVerification == true && mounted) {
       await openScreen(const OwnerVerificationRequestScreen());
     }
+  }
+}
+
+class _OwnerDashboardContent extends StatelessWidget {
+  const _OwnerDashboardContent({
+    required this.rooms,
+    required this.inquiries,
+    required this.profile,
+    required this.profileLoading,
+    required this.profileError,
+    required this.onOpen,
+    required this.onVerificationRequired,
+  });
+
+  final List<RoomModel> rooms;
+  final List<InquiryModel> inquiries;
+  final AppUserModel? profile;
+  final bool profileLoading;
+  final bool profileError;
+  final Future<void> Function(Widget) onOpen;
+  final Future<void> Function() onVerificationRequired;
+
+  @override
+  Widget build(BuildContext context) {
+    final verified = profile?.isVerifiedOwner == true;
+    final active = profile?.isActive == true;
+    final unread = unreadOwnerInquiryCount(inquiries);
+    if (profileLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (profileError) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Owner verification status could not be loaded.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    if (!active) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Dashboard analytics are unavailable for this account.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        if (verified)
+          _StatsCard(
+            listingCount: rooms.length,
+            availableCount: rooms.where((room) => room.isAvailable).length,
+            pendingCount: pendingOwnerInquiryCount(inquiries),
+            unreadCount: unread,
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Owner verification approval is required to view dashboard analytics.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        const SizedBox(height: 24),
+        _OwnerActionCard(
+          icon: Icons.add_home_work_rounded,
+          title: 'Add Room',
+          subtitle: verified
+              ? 'Post a new room or hostel listing'
+              : 'Owner verification approval required',
+          onTap: profileLoading || profileError || !active
+              ? null
+              : () => verified
+                  ? onOpen(const AddRoomScreen())
+                  : onVerificationRequired(),
+        ),
+        _OwnerActionCard(
+          icon: Icons.home_work_outlined,
+          title: 'My Listings',
+          subtitle: 'Manage your added rooms',
+          onTap: () => onOpen(const MyListingsScreen()),
+        ),
+        _OwnerActionCard(
+          icon: Icons.analytics_outlined,
+          title: 'Listing Analytics',
+          subtitle: verified
+              ? 'Requests, visits, ratings, and listing performance'
+              : 'Owner verification approval required',
+          onTap: profileLoading || profileError || !active
+              ? null
+              : () => verified
+                  ? onOpen(const OwnerAnalyticsScreen())
+                  : onVerificationRequired(),
+        ),
+        _OwnerActionCard(
+          icon: Icons.notifications_outlined,
+          title: 'Request Activity',
+          subtitle: unread == 0
+              ? 'View inquiries and visit requests'
+              : '$unread unread request${unread == 1 ? '' : 's'}',
+          onTap: () => onOpen(const InquiriesScreen()),
+        ),
+        _OwnerActionCard(
+          icon: Icons.person_outline,
+          title: 'Owner Profile',
+          subtitle: 'Manage account and contact details',
+          onTap: () => onOpen(const OwnerProfileScreen()),
+        ),
+      ],
+    );
   }
 }
 
