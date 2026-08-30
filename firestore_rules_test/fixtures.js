@@ -67,6 +67,20 @@ export function inquiryData(customerId, ownerId, roomId, options = {}) {
   };
 }
 
+export function reviewData(customerId, roomId, eligibilityInquiryId, options = {}) {
+  return {
+    roomId,
+    customerId,
+    eligibilityInquiryId,
+    rating: options.rating ?? 4,
+    reviewText: options.reviewText ?? 'A helpful review of this room.',
+    reviewerDisplayName: `User ${customerId}`,
+    createdAt: now,
+    updatedAt: now,
+    ...options.overrides,
+  };
+}
+
 export function verificationRequestData(ownerId, status, options = {}) {
   return {
     ownerId,

@@ -154,6 +154,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /reviews/{reviewId} {
+      allow get: if canReadRoom(resource.data.roomId)
+        || isValidOwnReviewRead(reviewId);
+
+      allow list: if canReadRoom(resource.data.roomId);
+
+      allow create: if isValidReviewCreate(reviewId);
+
+      allow update: if isValidReviewUpdate(reviewId);
+
+      allow delete: if isValidReviewDelete(reviewId);
+    }
+
     match /verificationRequests/{ownerId} {
       allow get: if (isActiveOwner()
           && ownerId == request.auth.uid)
@@ -249,6 +262,14 @@ service cloud.firestore {
     function hasSavedRoom(roomId) {
       return isActiveCustomer()
         && exists(/databases/$(database)/documents/savedRooms/$(request.auth.uid + '_' + roomId));
+    }
+
+    function canReadRoom(roomId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && (get(/databases/$(database)/documents/rooms/$(roomId)).data.isAvailable == true
+          || get(/databases/$(database)/documents/rooms/$(roomId)).data.ownerId == request.auth.uid
+          || hasSavedRoom(roomId));
     }
 
     function hasValidRoomFields(data) {
@@ -517,6 +538,93 @@ service cloud.firestore {
     function isValidOwnerStatusTransition(from, to) {
       return (from == 'pending' && to in ['accepted', 'declined'])
         || (from == 'accepted' && to == 'completed');
+    }
+
+    function hasValidReviewFields(data) {
+      return data.roomId is string
+        && data.roomId.size() > 0
+        && data.roomId.size() <= 128
+        && data.customerId is string
+        && data.customerId.size() > 0
+        && data.customerId.size() <= 128
+        && data.eligibilityInquiryId is string
+        && data.eligibilityInquiryId.size() > 0
+        && data.eligibilityInquiryId.size() <= 128
+        && data.rating is int
+        && data.rating >= 1
+        && data.rating <= 5
+        && data.reviewText is string
+        && data.reviewText.size() > 0
+        && data.reviewText.size() <= 1000
+        && data.reviewText.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && data.reviewerDisplayName is string
+        && data.reviewerDisplayName.size() > 0
+        && data.reviewerDisplayName.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function hasCompletedVisitEligibility(data) {
+      return exists(/databases/$(database)/documents/inquiries/$(data.eligibilityInquiryId))
+        && get(/databases/$(database)/documents/inquiries/$(data.eligibilityInquiryId)).data.customerId == request.auth.uid
+        && get(/databases/$(database)/documents/inquiries/$(data.eligibilityInquiryId)).data.roomId == data.roomId
+        && get(/databases/$(database)/documents/inquiries/$(data.eligibilityInquiryId)).data.type == 'visitRequest'
+        && get(/databases/$(database)/documents/inquiries/$(data.eligibilityInquiryId)).data.status == 'completed';
+    }
+
+    function isValidOwnReviewRead(reviewId) {
+      return isActiveCustomer()
+        && ((!exists(/databases/$(database)/documents/reviews/$(reviewId))
+            && request.auth.uid.matches('^[A-Za-z0-9_-]+$')
+            && reviewId.matches('^' + request.auth.uid + '_[^/]+$'))
+          || (resource.data.customerId == request.auth.uid
+            && reviewId == request.auth.uid + '_' + resource.data.roomId));
+    }
+
+    function isValidReviewCreate(reviewId) {
+      return isActiveCustomer()
+        && request.resource.data.keys().hasOnly([
+          'roomId',
+          'customerId',
+          'eligibilityInquiryId',
+          'rating',
+          'reviewText',
+          'reviewerDisplayName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && hasValidReviewFields(request.resource.data)
+        && request.resource.data.customerId == request.auth.uid
+        && reviewId == request.auth.uid + '_' + request.resource.data.roomId
+        && canReadRoom(request.resource.data.roomId)
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
+        && get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.ownerId != request.auth.uid
+        && request.resource.data.reviewerDisplayName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.fullName
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && hasCompletedVisitEligibility(request.resource.data);
+    }
+
+    function isValidReviewUpdate(reviewId) {
+      return isActiveCustomer()
+        && resource.data.customerId == request.auth.uid
+        && reviewId == request.auth.uid + '_' + resource.data.roomId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'rating',
+          'reviewText',
+          'updatedAt'
+        ])
+        && hasValidReviewFields(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && exists(/databases/$(database)/documents/rooms/$(resource.data.roomId))
+        && get(/databases/$(database)/documents/rooms/$(resource.data.roomId)).data.ownerId != request.auth.uid
+        && hasCompletedVisitEligibility(request.resource.data);
+    }
+
+    function isValidReviewDelete(reviewId) {
+      return isActiveCustomer()
+        && resource.data.customerId == request.auth.uid
+        && reviewId == request.auth.uid + '_' + resource.data.roomId;
     }
   }
 }

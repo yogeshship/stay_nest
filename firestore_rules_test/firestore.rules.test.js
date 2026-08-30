@@ -25,6 +25,7 @@ import {
   inquiryData,
   now,
   roomData,
+  reviewData,
   savedRoomData,
   seed,
   userData,
@@ -797,4 +798,280 @@ test('verification field bounds reject invalid owner metadata and rejection reas
   await seedPendingOwner();
   await assertFails(adminDecision(ids.admin, 'owner-pending', 'rejected', ''));
   await assertFails(adminDecision(ids.admin, 'owner-pending', 'rejected', 'x'.repeat(501)));
+});
+
+async function seedReviewScenario(options = {}) {
+  const inquiryId = options.inquiryId ?? 'completed-visit';
+  const roomId = options.roomId ?? 'available-room';
+  const customerId = options.customerId ?? ids.customer;
+  await seedCore({ extraSeeds: [
+    {
+      path: `inquiries/${inquiryId}`,
+      data: inquiryData(customerId, ids.owner, roomId, {
+        type: options.type ?? 'visitRequest',
+        status: options.status ?? 'completed',
+      }),
+    },
+    ...(options.extraSeeds ?? []),
+  ] });
+  return { inquiryId, roomId, customerId };
+}
+
+function createReview(uid, roomId, inquiryId, overrides = {}, reviewId) {
+  return createReviewFor(uid, uid, roomId, inquiryId, overrides, reviewId);
+}
+
+function createReviewFor(authUid, customerId, roomId, inquiryId, overrides = {}, reviewId) {
+  return setDoc(
+    doc(dbFor(authUid), `reviews/${reviewId ?? `${customerId}_${roomId}`}`),
+    {
+      ...reviewData(customerId, roomId, inquiryId),
+      ...overrides,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+  );
+}
+
+test('eligible customer creates one deterministic bounded review', async () => {
+  const { inquiryId, roomId } = await seedReviewScenario();
+  await assertSucceeds(createReview(ids.customer, roomId, inquiryId, { rating: 1 }));
+  await assertFails(createReview(ids.customer, roomId, inquiryId, { rating: 5 }));
+  await assertFails(createReview(ids.customer, roomId, inquiryId, {}, 'alternate-id'));
+
+  await env.clearFirestore();
+  await seedReviewScenario();
+  await assertSucceeds(createReview(ids.customer, roomId, inquiryId, {
+    rating: 5,
+    reviewText: 'x'.repeat(1000),
+  }));
+});
+
+test('active customer can directly observe their missing deterministic review only', async () => {
+  await seedCore();
+  await assertSucceeds(getDoc(doc(dbFor(ids.customer), `reviews/${ids.customer}_available-room`)));
+  await assertFails(getDoc(doc(dbFor(ids.customer), 'reviews/arbitrary-id')));
+  await assertFails(getDoc(doc(dbFor(ids.owner), `reviews/${ids.owner}_available-room`)));
+});
+
+test('regex-significant custom UIDs cannot use the missing-review exception', async () => {
+  const unsafeUids = ['custom.uid', 'custom+uid', 'custom*uid', 'custom[uid', 'custom|uid'];
+  await seedCore({ extraSeeds: unsafeUids.map((uid) => ({
+    path: `users/${uid}`,
+    data: userData(uid, 'customer'),
+  })).concat([{
+    path: `reviews/${unsafeUids[0]}_unavailable-room`,
+    data: reviewData(unsafeUids[0], 'unavailable-room', 'completed-visit'),
+  }]) });
+  for (const uid of unsafeUids) {
+    await assertFails(getDoc(doc(dbFor(uid), `reviews/${uid}_available-room`)));
+  }
+  await assertSucceeds(getDoc(doc(
+    dbFor(unsafeUids[0]),
+    `reviews/${unsafeUids[0]}_unavailable-room`,
+  )));
+});
+
+test('review creation rejects invalid fields and spoofed metadata', async () => {
+  const { inquiryId, roomId } = await seedReviewScenario();
+  for (const overrides of [
+    { rating: 0 },
+    { rating: 6 },
+    { rating: 4.5 },
+    { reviewText: '' },
+    { reviewText: '   ' },
+    { reviewText: '\t\t' },
+    { reviewText: '\n\n' },
+    { reviewText: ' \t\n ' },
+    { reviewText: 'x'.repeat(1001) },
+    { customerId: ids.otherCustomer },
+    { reviewerDisplayName: 'Spoofed' },
+    { createdAt: now },
+    { updatedAt: now },
+    { extraField: true },
+  ]) {
+    const payload = {
+      ...reviewData(ids.customer, roomId, inquiryId),
+      ...overrides,
+      createdAt: Object.hasOwn(overrides, 'createdAt') ? overrides.createdAt : serverTimestamp(),
+      updatedAt: Object.hasOwn(overrides, 'updatedAt') ? overrides.updatedAt : serverTimestamp(),
+    };
+    await assertFails(setDoc(doc(dbFor(ids.customer), `reviews/${ids.customer}_${roomId}`), payload));
+  }
+
+  await assertSucceeds(createReview(ids.customer, roomId, inquiryId, {
+    reviewText: 'Useful first line.\nHelpful second line.',
+  }));
+});
+
+test('review creation requires active customer and completed matching visit request', async () => {
+  const cases = [
+    ['pending', 'visitRequest', ids.customer, 'available-room'],
+    ['accepted', 'visitRequest', ids.customer, 'available-room'],
+    ['declined', 'visitRequest', ids.customer, 'available-room'],
+    ['completed', 'inquiry', ids.customer, 'available-room'],
+    ['completed', 'visitRequest', ids.otherCustomer, 'available-room'],
+    ['completed', 'visitRequest', ids.customer, 'other-room'],
+  ];
+  for (const [status, type, evidenceCustomer, evidenceRoom] of cases) {
+    await seedReviewScenario({ status, type, customerId: evidenceCustomer, roomId: evidenceRoom });
+    await assertFails(createReview(ids.customer, 'available-room', 'completed-visit'));
+    await env.clearFirestore();
+  }
+
+  await seedCore();
+  await assertFails(createReview(ids.customer, 'available-room', 'missing'));
+});
+
+test('review creation role denials use otherwise-valid completed visits', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'inquiries/owner-visit', data: inquiryData(ids.owner, ids.otherOwner, 'other-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: 'inquiries/admin-visit', data: inquiryData(ids.admin, ids.owner, 'available-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: 'inquiries/inactive-visit', data: inquiryData(ids.inactiveCustomer, ids.owner, 'available-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: 'inquiries/other-visit', data: inquiryData(ids.otherCustomer, ids.owner, 'available-room', { type: 'visitRequest', status: 'completed' }) },
+  ] });
+  await assertFails(createReview(ids.owner, 'other-room', 'owner-visit'));
+  await assertFails(createReview(ids.admin, 'available-room', 'admin-visit'));
+  await assertFails(createReview(ids.inactiveCustomer, 'available-room', 'inactive-visit'));
+  await assertFails(createReviewFor(null, ids.otherCustomer, 'available-room', 'other-visit'));
+  await assertFails(createReviewFor(
+    ids.customer,
+    ids.otherCustomer,
+    'available-room',
+    'other-visit',
+  ));
+});
+
+test('customer cannot review own room', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'rooms/customer-room', data: roomData(ids.customer) },
+    { path: 'inquiries/customer-room-visit', data: inquiryData(ids.customer, ids.customer, 'customer-room', { type: 'visitRequest', status: 'completed' }) },
+  ] });
+  await assertFails(createReview(ids.customer, 'customer-room', 'customer-room-visit'));
+});
+
+test('review updates allow content only and preserve eligibility integrity', async () => {
+  const { inquiryId, roomId } = await seedReviewScenario({ extraSeeds: [{
+    path: `reviews/${ids.customer}_available-room`,
+    data: reviewData(ids.customer, 'available-room', 'completed-visit'),
+  }] });
+  const reference = doc(dbFor(ids.customer), `reviews/${ids.customer}_${roomId}`);
+  await assertSucceeds(updateDoc(reference, {
+    rating: 5, reviewText: 'Updated review', updatedAt: serverTimestamp(),
+  }));
+  for (const mutation of [
+    { roomId: 'other-room' },
+    { customerId: ids.otherCustomer },
+    { eligibilityInquiryId: 'other' },
+    { reviewerDisplayName: 'Changed' },
+    { createdAt: serverTimestamp() },
+  ]) {
+    await assertFails(updateDoc(reference, {
+      rating: 3, reviewText: 'Invalid', updatedAt: serverTimestamp(), ...mutation,
+    }));
+  }
+  assert.equal(inquiryId, 'completed-visit');
+});
+
+test('review update ownership and active-role denials are isolated', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'inquiries/completed-visit', data: inquiryData(ids.customer, ids.owner, 'available-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: `reviews/${ids.customer}_available-room`, data: reviewData(ids.customer, 'available-room', 'completed-visit') },
+    { path: 'inquiries/inactive-visit', data: inquiryData(ids.inactiveCustomer, ids.owner, 'available-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: `reviews/${ids.inactiveCustomer}_available-room`, data: reviewData(ids.inactiveCustomer, 'available-room', 'inactive-visit') },
+  ] });
+  const update = (uid, reviewId) => updateDoc(doc(dbFor(uid), `reviews/${reviewId}`), {
+    rating: 5,
+    reviewText: 'Otherwise valid update',
+    updatedAt: serverTimestamp(),
+  });
+  await assertSucceeds(update(ids.customer, `${ids.customer}_available-room`));
+  await assertFails(update(ids.owner, `${ids.customer}_available-room`));
+  await assertFails(update(ids.admin, `${ids.customer}_available-room`));
+  await assertFails(update(ids.otherCustomer, `${ids.customer}_available-room`));
+  await assertFails(update(ids.inactiveCustomer, `${ids.inactiveCustomer}_available-room`));
+  await assertFails(update(null, `${ids.customer}_available-room`));
+});
+
+test('review creation and recreation require current room visibility', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'inquiries/saved-visit', data: inquiryData(ids.customer, ids.owner, 'unavailable-room', { type: 'visitRequest', status: 'completed' }) },
+    { path: `savedRooms/${ids.customer}_unavailable-room`, data: savedRoomData(ids.customer, 'unavailable-room') },
+    { path: 'inquiries/unsaved-visit', data: inquiryData(ids.otherCustomer, ids.owner, 'unavailable-room', { type: 'visitRequest', status: 'completed' }) },
+  ] });
+  await assertSucceeds(createReview(ids.customer, 'unavailable-room', 'saved-visit'));
+  const savedReview = doc(dbFor(ids.customer), `reviews/${ids.customer}_unavailable-room`);
+  await assertSucceeds(deleteDoc(savedReview));
+  await assertSucceeds(createReview(ids.customer, 'unavailable-room', 'saved-visit'));
+  await assertFails(createReview(ids.otherCustomer, 'unavailable-room', 'unsaved-visit'));
+});
+
+test('unavailable room review visibility mirrors room visibility', async () => {
+  await seedCore({ extraSeeds: [
+    { path: `savedRooms/${ids.customer}_unavailable-room`, data: savedRoomData(ids.customer, 'unavailable-room') },
+    { path: `reviews/${ids.customer}_unavailable-room`, data: reviewData(ids.customer, 'unavailable-room', 'completed-visit') },
+  ] });
+  const roomQuery = (uid) => getDocs(query(
+    collection(dbFor(uid), 'reviews'),
+    where('roomId', '==', 'unavailable-room'),
+  ));
+  await assertSucceeds(roomQuery(ids.customer));
+  await assertFails(roomQuery(ids.otherCustomer));
+  await assertSucceeds(roomQuery(ids.owner));
+  await assertFails(getDoc(doc(dbFor(ids.otherCustomer), `reviews/${ids.customer}_unavailable-room`)));
+  await assertFails(getDoc(doc(dbFor(ids.otherCustomer), 'rooms/unavailable-room')));
+  await assertFails(getDocs(query(
+    collection(dbFor(ids.otherCustomer), 'reviews'),
+    where('customerId', '==', ids.otherCustomer),
+  )));
+});
+
+test('inactive customers cannot directly get existing or missing own reviews', async () => {
+  await seedCore({ extraSeeds: [{
+    path: `reviews/${ids.inactiveCustomer}_unavailable-room`,
+    data: reviewData(ids.inactiveCustomer, 'unavailable-room', 'completed-visit'),
+  }] });
+  await assertFails(getDoc(doc(dbFor(ids.inactiveCustomer), `reviews/${ids.inactiveCustomer}_unavailable-room`)));
+  await assertFails(getDoc(doc(dbFor(ids.inactiveCustomer), `reviews/${ids.inactiveCustomer}_missing-room`)));
+});
+
+test('review edit and delete remain least privilege across room availability', async () => {
+  await seedReviewScenario({ extraSeeds: [{
+    path: `reviews/${ids.customer}_available-room`,
+    data: reviewData(ids.customer, 'available-room', 'completed-visit'),
+  }] });
+  await assertSucceeds(getDocs(query(collection(dbFor(ids.customer), 'reviews'), where('roomId', '==', 'available-room'))));
+  await assertSucceeds(updateDoc(doc(dbFor(ids.owner), 'rooms/available-room'), {
+    isAvailable: false, updatedAt: serverTimestamp(),
+  }));
+  const own = doc(dbFor(ids.customer), `reviews/${ids.customer}_available-room`);
+  await assertSucceeds(updateDoc(own, {
+    rating: 3, reviewText: 'Still editable', updatedAt: serverTimestamp(),
+  }));
+  await assertFails(getDoc(doc(dbFor(ids.customer), 'rooms/available-room')));
+  await assertSucceeds(getDoc(own));
+  await assertFails(getDocs(query(collection(dbFor(ids.customer), 'reviews'), where('roomId', '==', 'available-room'))));
+  await assertFails(getDocs(query(collection(dbFor(ids.customer), 'reviews'), where('customerId', '==', ids.customer))));
+  await assertFails(getDoc(doc(dbFor(ids.otherCustomer), `reviews/${ids.customer}_available-room`)));
+  await assertSucceeds(getDocs(query(collection(dbFor(ids.owner), 'reviews'), where('roomId', '==', 'available-room'))));
+  await assertFails(deleteDoc(doc(dbFor(ids.owner), `reviews/${ids.customer}_available-room`)));
+  await assertFails(deleteDoc(doc(dbFor(ids.admin), `reviews/${ids.customer}_available-room`)));
+  await assertFails(deleteDoc(doc(dbFor(ids.otherCustomer), `reviews/${ids.customer}_available-room`)));
+  await assertSucceeds(deleteDoc(own));
+  await assertFails(createReview(ids.customer, 'available-room', 'completed-visit'));
+});
+
+test('own review direct get and delete survive room deletion while edit and lists fail', async () => {
+  await seedReviewScenario({ extraSeeds: [{
+    path: `reviews/${ids.customer}_available-room`,
+    data: reviewData(ids.customer, 'available-room', 'completed-visit'),
+  }] });
+  await assertSucceeds(deleteDoc(doc(dbFor(ids.owner), 'rooms/available-room')));
+  const own = doc(dbFor(ids.customer), `reviews/${ids.customer}_available-room`);
+  await assertSucceeds(getDoc(own));
+  await assertFails(getDocs(query(collection(dbFor(ids.customer), 'reviews'), where('roomId', '==', 'available-room'))));
+  await assertFails(updateDoc(own, {
+    rating: 2, reviewText: 'No edit after deletion', updatedAt: serverTimestamp(),
+  }));
+  await assertSucceeds(deleteDoc(own));
 });
