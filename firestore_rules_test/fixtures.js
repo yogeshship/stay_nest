@@ -58,6 +58,8 @@ export function inquiryData(customerId, ownerId, roomId, options = {}) {
     hiddenByCustomer: options.hiddenByCustomer ?? false,
     createdAt: now,
     updatedAt: now,
+    customerReadAt: options.customerReadAt ?? now,
+    ownerReadAt: options.ownerReadAt ?? null,
     roomTitle: 'Test Room',
     roomLocation: 'Kathmandu',
     customerDisplayName: `User ${customerId}`,

@@ -12,7 +12,9 @@ import '../services/saved_rooms_service.dart';
 import 'search_screen.dart';
 import 'saved_screen.dart';
 import 'profile_screen.dart';
-import 'messages_screen.dart';
+import 'activity_screen.dart';
+import '../models/inquiry_model.dart';
+import '../services/inquiry_service.dart';
 import 'trust_verification_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -89,7 +91,7 @@ class HomeScreen extends StatelessWidget {
     if (index == 3) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const MessagesScreen()),
+        MaterialPageRoute(builder: (context) => const ActivityScreen()),
       );
     }
   }
@@ -101,20 +103,23 @@ class HomeScreen extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: 0,
         onDestinationSelected: (index) => _onBottomNavTap(context, index),
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home_rounded),
               label: "Home"),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.search_rounded), label: "Search"),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.favorite_border_rounded),
               selectedIcon: Icon(Icons.favorite_rounded),
               label: "Saved"),
-          NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline_rounded), label: "Messages"),
-          NavigationDestination(
+          const NavigationDestination(
+            icon: _CustomerActivityIcon(),
+            selectedIcon: Icon(Icons.notifications_rounded),
+            label: "Activity",
+          ),
+          const NavigationDestination(
               icon: Icon(Icons.person_outline_rounded), label: "Profile"),
         ],
       ),
@@ -159,6 +164,40 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CustomerActivityIcon extends StatefulWidget {
+  const _CustomerActivityIcon();
+
+  @override
+  State<_CustomerActivityIcon> createState() => _CustomerActivityIconState();
+}
+
+class _CustomerActivityIconState extends State<_CustomerActivityIcon> {
+  late final Stream<List<InquiryModel>> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = InquiryService().watchCustomerInquiries();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<List<InquiryModel>>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        final count =
+            snapshot.data?.where((item) => item.isUnreadForCustomer).length ??
+                0;
+        return Badge(
+          isLabelVisible: count > 0,
+          label: Text(count > 99 ? '99+' : '$count'),
+          child: const Icon(Icons.notifications_outlined),
+        );
+      },
     );
   }
 }

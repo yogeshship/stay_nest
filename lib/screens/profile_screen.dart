@@ -7,8 +7,7 @@ import '../services/saved_rooms_service.dart';
 import '../services/inquiry_service.dart';
 import '../models/inquiry_model.dart';
 import 'saved_screen.dart';
-import 'messages_screen.dart';
-import 'my_requests_screen.dart';
+import 'activity_screen.dart';
 import 'trust_verification_screen.dart';
 import 'help_support_screen.dart';
 import 'welcome_screen.dart';
@@ -67,26 +66,13 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
           _ProfileOption(
-            icon: Icons.chat_bubble_outline,
-            title: "Messages",
+            icon: Icons.notifications_outlined,
+            title: "Activity",
             subtitle: "Track inquiry and visit updates",
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const MessagesScreen()),
-              );
-            },
-          ),
-          _ProfileOption(
-            icon: Icons.person_search_outlined,
-            title: "My Room Requests",
-            subtitle: "Rooms you requested through StayNest",
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const MyRequestsScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const ActivityScreen()),
               );
             },
           ),
@@ -169,8 +155,10 @@ class _CustomerInquiryCountState extends State<_CustomerInquiryCount> {
     return StreamBuilder<List<InquiryModel>>(
       stream: _inquiriesStream,
       builder: (context, snapshot) => _ProfileStatCard(
-        title: 'Inquiries',
-        value: snapshot.hasError ? '—' : '${snapshot.data?.length ?? 0}',
+        title: 'Unread',
+        value: snapshot.hasError
+            ? '—'
+            : '${snapshot.data?.where((item) => item.isUnreadForCustomer).length ?? 0}',
       ),
     );
   }

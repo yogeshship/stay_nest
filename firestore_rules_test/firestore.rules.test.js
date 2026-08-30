@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import {
   inquiryData,
+  now,
   roomData,
   savedRoomData,
   seed,
@@ -289,12 +290,30 @@ test('inquiries enforce valid creation identity and available room', async () =>
     ...overrides,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    customerReadAt: serverTimestamp(),
   });
   await assertSucceeds(create('valid'));
   await assertFails(create('spoof-customer', { customerId: ids.otherCustomer }));
   await assertFails(create('spoof-owner', { ownerId: ids.otherOwner }));
   await assertFails(create('missing-room', { roomId: 'missing' }));
   await assertFails(create('unavailable', { roomId: 'unavailable-room' }));
+});
+
+test('inquiry creation enforces exact read receipt defaults', async () => {
+  await seedCore();
+  const create = (id, customerReadAt, ownerReadAt) => setDoc(
+    doc(dbFor(ids.customer), `inquiries/${id}`),
+    {
+      ...inquiryData(ids.customer, ids.owner, 'available-room'),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      customerReadAt,
+      ownerReadAt,
+    },
+  );
+  await assertFails(create('null-customer-read', null, null));
+  await assertFails(create('past-customer-read', now, null));
+  await assertFails(create('spoof-owner-read', serverTimestamp(), now));
 });
 
 test('inquiry queries are isolated while assigned unverified owners may read', async () => {
@@ -311,7 +330,9 @@ test('inquiry queries are isolated while assigned unverified owners may read', a
 
 async function transitionInquiry(uid, inquiryId, status) {
   await updateDoc(doc(dbFor(uid), `inquiries/${inquiryId}`), {
-    status, updatedAt: serverTimestamp(),
+    status,
+    updatedAt: serverTimestamp(),
+    ownerReadAt: serverTimestamp(),
   });
 }
 
@@ -337,7 +358,7 @@ test('unverified/inactive owners cannot mutate and customer can only hide own in
   await assertFails(transitionInquiry(ids.unverifiedOwner, 'unverified', 'accepted'));
   await assertFails(transitionInquiry(ids.inactiveOwner, 'inactive', 'accepted'));
   await assertSucceeds(updateDoc(doc(dbFor(ids.customer), 'inquiries/customer'), {
-    hiddenByCustomer: true, updatedAt: serverTimestamp(),
+    hiddenByCustomer: true,
   }));
   await assertFails(updateDoc(doc(dbFor(ids.customer), 'inquiries/customer'), {
     status: 'accepted', updatedAt: serverTimestamp(),
@@ -345,6 +366,94 @@ test('unverified/inactive owners cannot mutate and customer can only hide own in
   await assertFails(updateDoc(doc(dbFor(ids.customer), 'inquiries/customer'), {
     ownerId: ids.otherOwner, updatedAt: serverTimestamp(),
   }));
+});
+
+test('inquiry read receipts are isolated and cannot modify activity data', async () => {
+  await seedCore({ extraSeeds: [{
+    path: 'inquiries/receipt',
+    data: inquiryData(ids.customer, ids.owner, 'available-room', {
+      customerReadAt: null,
+      ownerReadAt: null,
+    }),
+  }] });
+  const referenceFor = (uid) => doc(dbFor(uid), 'inquiries/receipt');
+  await assertSucceeds(updateDoc(referenceFor(ids.customer), {
+    customerReadAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(referenceFor(ids.owner), {
+    ownerReadAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.customer), {
+    ownerReadAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.owner), {
+    customerReadAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.customer), {
+    customerReadAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.owner), {
+    ownerReadAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.otherCustomer), {
+    customerReadAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(referenceFor(ids.otherOwner), {
+    ownerReadAt: serverTimestamp(),
+  }));
+});
+
+test('legacy inquiries safely gain only the authorized receipt', async () => {
+  const legacy = inquiryData(ids.customer, ids.unverifiedOwner, 'available-room');
+  delete legacy.customerReadAt;
+  delete legacy.ownerReadAt;
+  await seedCore({ extraSeeds: [{ path: 'inquiries/legacy-receipt', data: legacy }] });
+  const customerReference = doc(dbFor(ids.customer), 'inquiries/legacy-receipt');
+  const ownerReference = doc(dbFor(ids.unverifiedOwner), 'inquiries/legacy-receipt');
+  await assertSucceeds(updateDoc(customerReference, {
+    customerReadAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(ownerReference, {
+    ownerReadAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(ownerReference, {
+    status: 'accepted',
+    updatedAt: serverTimestamp(),
+    ownerReadAt: serverTimestamp(),
+  }));
+});
+
+test('customer hide is private and cannot create owner activity', async () => {
+  const ownerReadAt = Timestamp.fromDate(new Date('2026-08-17T09:00:00Z'));
+  await seedCore({ extraSeeds: [{
+    path: 'inquiries/hide-regression',
+    data: inquiryData(ids.customer, ids.owner, 'available-room', { ownerReadAt }),
+  }] });
+  const customerReference = doc(dbFor(ids.customer), 'inquiries/hide-regression');
+  const before = (await getDoc(customerReference)).data();
+  await assertFails(updateDoc(customerReference, {
+    hiddenByCustomer: true, updatedAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(customerReference, { hiddenByCustomer: true }));
+  const after = (await getDoc(doc(dbFor(ids.owner), 'inquiries/hide-regression'))).data();
+  assert.equal(after.updatedAt.toMillis(), before.updatedAt.toMillis());
+  assert.equal(after.ownerReadAt.toMillis(), ownerReadAt.toMillis());
+  assert.equal(after.createdAt.toMillis() > after.ownerReadAt.toMillis(), false);
+});
+
+test('customer hide cannot be combined with either read receipt', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'inquiries/hide-customer-receipt', data: inquiryData(ids.customer, ids.owner, 'available-room') },
+    { path: 'inquiries/hide-owner-receipt', data: inquiryData(ids.customer, ids.owner, 'available-room') },
+  ] });
+  await assertFails(updateDoc(
+    doc(dbFor(ids.customer), 'inquiries/hide-customer-receipt'),
+    { hiddenByCustomer: true, customerReadAt: serverTimestamp() },
+  ));
+  await assertFails(updateDoc(
+    doc(dbFor(ids.customer), 'inquiries/hide-owner-receipt'),
+    { hiddenByCustomer: true, ownerReadAt: serverTimestamp() },
+  ));
 });
 
 async function ownerSubmission(uid, ownerDisplayName = `User ${uid}`) {
@@ -510,6 +619,7 @@ test('inquiry snapshot metadata must match authoritative room and customer data'
     ...overrides,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    customerReadAt: serverTimestamp(),
   });
   await assertFails(create('spoof-title', { roomTitle: 'Fake room' }));
   await assertFails(create('spoof-location', { roomLocation: 'Fake location' }));
@@ -530,6 +640,7 @@ test('accepted visit scheduling requires a future timestamp', async () => {
   const schedule = (id, date) => updateDoc(doc(dbFor(ids.owner), `inquiries/${id}`), {
     scheduledVisitAt: Timestamp.fromDate(date),
     updatedAt: serverTimestamp(),
+    ownerReadAt: serverTimestamp(),
   });
   await assertSucceeds(schedule('visit-future', futureVisit));
   await assertFails(schedule('visit-past', pastVisit));
@@ -537,6 +648,31 @@ test('accepted visit scheduling requires a future timestamp', async () => {
   await assertFails(schedule('pending-visit', futureVisit));
   await assertFails(schedule('declined-visit', futureVisit));
   await assertFails(schedule('completed-visit', futureVisit));
+});
+
+test('owner workflow actions cannot modify the customer receipt', async () => {
+  await seedCore({ extraSeeds: [
+    { path: 'inquiries/status-customer-receipt', data: inquiryData(ids.customer, ids.owner, 'available-room') },
+    { path: 'inquiries/schedule-customer-receipt', data: inquiryData(ids.customer, ids.owner, 'available-room', { type: 'visitRequest', status: 'accepted' }) },
+  ] });
+  await assertFails(updateDoc(
+    doc(dbFor(ids.owner), 'inquiries/status-customer-receipt'),
+    {
+      status: 'accepted',
+      updatedAt: serverTimestamp(),
+      ownerReadAt: serverTimestamp(),
+      customerReadAt: serverTimestamp(),
+    },
+  ));
+  await assertFails(updateDoc(
+    doc(dbFor(ids.owner), 'inquiries/schedule-customer-receipt'),
+    {
+      scheduledVisitAt: Timestamp.fromDate(new Date(Date.now() + 86400000)),
+      updatedAt: serverTimestamp(),
+      ownerReadAt: serverTimestamp(),
+      customerReadAt: serverTimestamp(),
+    },
+  ));
 });
 
 test('legacy inquiry metadata does not block safe owner status transitions', async () => {
@@ -566,6 +702,7 @@ test('owner inquiry transitions cannot alter immutable fields', async () => {
     await assertFails(updateDoc(reference, {
       status: 'accepted',
       updatedAt: serverTimestamp(),
+      ownerReadAt: serverTimestamp(),
       ...mutation,
     }));
   }
@@ -577,10 +714,12 @@ test('inquiry no-op hide and status timestamp churn are denied', async () => {
     { path: 'inquiries/pending-noop', data: inquiryData(ids.customer, ids.owner, 'available-room') },
   ] });
   await assertFails(updateDoc(doc(dbFor(ids.customer), 'inquiries/already-hidden'), {
-    hiddenByCustomer: true, updatedAt: serverTimestamp(),
+    hiddenByCustomer: true,
   }));
   await assertFails(updateDoc(doc(dbFor(ids.owner), 'inquiries/pending-noop'), {
-    status: 'pending', updatedAt: serverTimestamp(),
+    status: 'pending',
+    updatedAt: serverTimestamp(),
+    ownerReadAt: serverTimestamp(),
   }));
 });
 
@@ -601,6 +740,7 @@ test('practical user, room, saved-room, and inquiry bounds reject oversized data
   await assertFails(setDoc(doc(dbFor(ids.customer), 'inquiries/oversized-message'), {
     ...inquiryData(ids.customer, ids.owner, 'available-room', { overrides: { message: 'x'.repeat(2001) } }),
     createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    customerReadAt: serverTimestamp(),
   }));
 });
 

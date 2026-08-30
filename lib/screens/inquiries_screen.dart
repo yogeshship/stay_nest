@@ -37,6 +37,29 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
     }
   }
 
+  Future<void> markRead(InquiryModel inquiry) async {
+    if (!inquiry.isUnreadForOwner) return;
+    try {
+      await _inquiryService.markOwnerRead(inquiry.id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyInquiryError(error))),
+      );
+    }
+  }
+
+  Future<void> markAllRead(List<InquiryModel> inquiries) async {
+    try {
+      await _inquiryService.markOwnerInquiriesRead(inquiries);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyInquiryError(error))),
+      );
+    }
+  }
+
   Future<void> scheduleVisit(String inquiryId) async {
     final now = DateTime.now();
     final date = await showDatePicker(
@@ -119,28 +142,46 @@ class _InquiriesScreenState extends State<InquiriesScreen> {
           if (inquiries.isEmpty) {
             return const Center(child: Text('No inquiries yet'));
           }
-          return ListView.builder(
+          final pendingCount = pendingOwnerInquiryCount(inquiries);
+          final unreadCount = unreadOwnerInquiryCount(inquiries);
+          return ListView(
             padding: const EdgeInsets.all(20),
-            itemCount: inquiries.length,
-            itemBuilder: (context, index) {
-              final inquiry = inquiries[index];
-              return _InquiryCard(
-                inquiry: inquiry,
-                onAccept: () => updateInquiryStatus(
-                  inquiry.id,
-                  InquiryModel.acceptedStatus,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$pendingCount pending · $unreadCount unread',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (unreadCount > 0)
+                    TextButton(
+                      onPressed: () => markAllRead(inquiries),
+                      child: const Text('Mark all as read'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              for (final inquiry in inquiries)
+                _InquiryCard(
+                  inquiry: inquiry,
+                  onRead: () => markRead(inquiry),
+                  onAccept: () => updateInquiryStatus(
+                    inquiry.id,
+                    InquiryModel.acceptedStatus,
+                  ),
+                  onReject: () => updateInquiryStatus(
+                    inquiry.id,
+                    InquiryModel.declinedStatus,
+                  ),
+                  onSchedule: () => scheduleVisit(inquiry.id),
+                  onComplete: () => updateInquiryStatus(
+                    inquiry.id,
+                    InquiryModel.completedStatus,
+                  ),
                 ),
-                onReject: () => updateInquiryStatus(
-                  inquiry.id,
-                  InquiryModel.declinedStatus,
-                ),
-                onSchedule: () => scheduleVisit(inquiry.id),
-                onComplete: () => updateInquiryStatus(
-                  inquiry.id,
-                  InquiryModel.completedStatus,
-                ),
-              );
-            },
+            ],
           );
         },
       ),
@@ -154,6 +195,7 @@ class _InquiryCard extends StatelessWidget {
   final VoidCallback onReject;
   final VoidCallback onSchedule;
   final VoidCallback onComplete;
+  final VoidCallback onRead;
 
   const _InquiryCard({
     required this.inquiry,
@@ -161,6 +203,7 @@ class _InquiryCard extends StatelessWidget {
     required this.onReject,
     required this.onSchedule,
     required this.onComplete,
+    required this.onRead,
   });
 
   Color getStatusColor() {
@@ -192,143 +235,155 @@ class _InquiryCard extends StatelessWidget {
         (inquiry.type == InquiryModel.inquiryType ||
             inquiry.scheduledVisitAt != null);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const CircleAvatar(
-                backgroundColor: Color(0xFFEDE7FF),
-                child: Icon(Icons.person, color: InquiriesScreen.primaryColor),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(inquiry.customerDisplayName,
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
-                    Text(inquiry.roomTitle,
-                        style: const TextStyle(
-                            color: Colors.black54, fontSize: 12)),
-                    const SizedBox(height: 4),
-                    Text(inquiry.roomLocation,
-                        style: const TextStyle(
-                            color: Colors.black45, fontSize: 12)),
-                  ],
-                ),
-              ),
-              Text(
-                inquiry.createdAt == null
-                    ? 'New'
-                    : TimeOfDay.fromDateTime(inquiry.createdAt!.toLocal())
-                        .format(context),
-                style: const TextStyle(color: Colors.black45, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            inquiry.typeLabel,
-            style: const TextStyle(
-              color: InquiriesScreen.primaryColor,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(inquiry.message),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: getStatusColor().withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              inquiry.statusLabel,
-              style: TextStyle(
-                color: getStatusColor(),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            getStatusMessage(),
-            style: const TextStyle(color: Colors.black54, fontSize: 12),
-          ),
-          if (inquiry.scheduledVisitAt != null) ...[
-            const SizedBox(height: 14),
-            _ScheduleSummary(scheduledVisit: inquiry.scheduledVisitAt!),
-          ],
-          if (isPending) ...[
-            const SizedBox(height: 14),
+    return GestureDetector(
+      onTap: onRead,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color:
+              inquiry.isUnreadForOwner ? const Color(0xFFF1EDFF) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
               children: [
+                if (inquiry.isUnreadForOwner) ...[
+                  const CircleAvatar(
+                    radius: 5,
+                    backgroundColor: InquiriesScreen.primaryColor,
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                const CircleAvatar(
+                  backgroundColor: Color(0xFFEDE7FF),
+                  child:
+                      Icon(Icons.person, color: InquiriesScreen.primaryColor),
+                ),
+                const SizedBox(width: 14),
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed: onReject,
-                    child: const Text("Reject"),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(inquiry.customerDisplayName,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      Text(inquiry.roomTitle,
+                          style: const TextStyle(
+                              color: Colors.black54, fontSize: 12)),
+                      const SizedBox(height: 4),
+                      Text(inquiry.roomLocation,
+                          style: const TextStyle(
+                              color: Colors.black45, fontSize: 12)),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: InquiriesScreen.primaryColor,
-                    ),
-                    onPressed: onAccept,
-                    child: const Text("Accept",
-                        style: TextStyle(color: Colors.white)),
-                  ),
+                Text(
+                  inquiry.createdAt == null
+                      ? 'New'
+                      : TimeOfDay.fromDateTime(inquiry.createdAt!.toLocal())
+                          .format(context),
+                  style: const TextStyle(color: Colors.black45, fontSize: 12),
                 ),
               ],
             ),
-          ],
-          if (canSchedule) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                ),
-                onPressed: onSchedule,
-                child: Text(
-                  inquiry.scheduledVisitAt == null
-                      ? "Schedule Visit"
-                      : "Change Visit Time",
-                  style: const TextStyle(color: Colors.white),
+            const SizedBox(height: 12),
+            Text(
+              inquiry.typeLabel,
+              style: const TextStyle(
+                color: InquiriesScreen.primaryColor,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(inquiry.message),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: getStatusColor().withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                inquiry.statusLabel,
+                style: TextStyle(
+                  color: getStatusColor(),
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-          ],
-          if (canComplete) ...[
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                ),
-                onPressed: onComplete,
-                child: const Text(
-                  "Mark Completed",
-                  style: TextStyle(color: Colors.white),
+            const SizedBox(height: 8),
+            Text(
+              getStatusMessage(),
+              style: const TextStyle(color: Colors.black54, fontSize: 12),
+            ),
+            if (inquiry.scheduledVisitAt != null) ...[
+              const SizedBox(height: 14),
+              _ScheduleSummary(scheduledVisit: inquiry.scheduledVisitAt!),
+            ],
+            if (isPending) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onReject,
+                      child: const Text("Reject"),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: InquiriesScreen.primaryColor,
+                      ),
+                      onPressed: onAccept,
+                      child: const Text("Accept",
+                          style: TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (canSchedule) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                  ),
+                  onPressed: onSchedule,
+                  child: Text(
+                    inquiry.scheduledVisitAt == null
+                        ? "Schedule Visit"
+                        : "Change Visit Time",
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ),
               ),
-            ),
+            ],
+            if (canComplete) ...[
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                  ),
+                  onPressed: onComplete,
+                  child: const Text(
+                    "Mark Completed",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

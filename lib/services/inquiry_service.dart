@@ -57,6 +57,8 @@ class InquiryService {
       'hiddenByCustomer': false,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'customerReadAt': FieldValue.serverTimestamp(),
+      'ownerReadAt': null,
       'roomTitle': currentRoom.title,
       'roomLocation': currentRoom.location,
       'customerDisplayName': displayName,
@@ -69,9 +71,10 @@ class InquiryService {
     return _inquiries
         .where('customerId', isEqualTo: customerId)
         .snapshots()
-        .map((snapshot) => _sorted(snapshot.docs)
+        .map((snapshot) => sortCustomerActivity(snapshot.docs
+            .map(InquiryModel.fromFirestore)
             .where((inquiry) => !inquiry.hiddenByCustomer)
-            .toList(growable: false));
+            .toList(growable: false)));
   }
 
   Stream<List<InquiryModel>> watchOwnerInquiries() {
@@ -79,7 +82,9 @@ class InquiryService {
     return _inquiries
         .where('ownerId', isEqualTo: ownerId)
         .snapshots()
-        .map((snapshot) => _sorted(snapshot.docs));
+        .map((snapshot) => sortOwnerActivity(
+              snapshot.docs.map(InquiryModel.fromFirestore).toList(),
+            ));
   }
 
   Future<InquiryModel?> getInquiryById(String inquiryId) async {
@@ -112,6 +117,7 @@ class InquiryService {
       transaction.update(reference, {
         'status': status,
         'updatedAt': FieldValue.serverTimestamp(),
+        'ownerReadAt': FieldValue.serverTimestamp(),
       });
     });
   }
@@ -138,6 +144,7 @@ class InquiryService {
       transaction.update(reference, {
         'scheduledVisitAt': Timestamp.fromDate(scheduledVisitAt),
         'updatedAt': FieldValue.serverTimestamp(),
+        'ownerReadAt': FieldValue.serverTimestamp(),
       });
     });
   }
@@ -153,8 +160,53 @@ class InquiryService {
     }
     await reference.update({
       'hiddenByCustomer': true,
-      'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> markCustomerRead(String inquiryId) async {
+    await _markRead(inquiryId: inquiryId, forOwner: false);
+  }
+
+  Future<void> markOwnerRead(String inquiryId) async {
+    await _markRead(inquiryId: inquiryId, forOwner: true);
+  }
+
+  Future<void> markCustomerInquiriesRead(List<InquiryModel> inquiries) =>
+      _markManyRead(inquiries.where((item) => item.isUnreadForCustomer), false);
+
+  Future<void> markOwnerInquiriesRead(List<InquiryModel> inquiries) =>
+      _markManyRead(inquiries.where((item) => item.isUnreadForOwner), true);
+
+  Future<void> _markRead({
+    required String inquiryId,
+    required bool forOwner,
+  }) async {
+    _requireAuthenticatedUid();
+    _validateDocumentId(inquiryId);
+    await _inquiries.doc(inquiryId).update({
+      forOwner ? 'ownerReadAt' : 'customerReadAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> _markManyRead(
+    Iterable<InquiryModel> inquiries,
+    bool forOwner,
+  ) async {
+    _requireAuthenticatedUid();
+    final items = inquiries.toList(growable: false);
+    const chunkSize = 450;
+    for (var start = 0; start < items.length; start += chunkSize) {
+      final batch = _firestore.batch();
+      final end = (start + chunkSize).clamp(0, items.length);
+      for (final inquiry in items.sublist(start, end)) {
+        _validateDocumentId(inquiry.id);
+        batch.update(_inquiries.doc(inquiry.id), {
+          forOwner ? 'ownerReadAt' : 'customerReadAt':
+              FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
   }
 
   bool _isValidOwnerTransition(String from, String to) {
@@ -163,17 +215,6 @@ class InquiryService {
                 to == InquiryModel.declinedStatus)) ||
         (from == InquiryModel.acceptedStatus &&
             to == InquiryModel.completedStatus);
-  }
-
-  List<InquiryModel> _sorted(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
-  ) {
-    final inquiries = documents.map(InquiryModel.fromFirestore).toList();
-    inquiries.sort((a, b) {
-      final oldest = DateTime.fromMillisecondsSinceEpoch(0);
-      return (b.createdAt ?? oldest).compareTo(a.createdAt ?? oldest);
-    });
-    return inquiries;
   }
 
   String _requireAuthenticatedUid() {
@@ -189,6 +230,45 @@ class InquiryService {
       throw ArgumentError('A valid inquiry ID is required.');
     }
   }
+}
+
+List<InquiryModel> sortCustomerActivity(List<InquiryModel> inquiries) {
+  final sorted = List<InquiryModel>.of(inquiries);
+  sorted.sort((a, b) => _compareActivity(
+        aUnread: a.isUnreadForCustomer,
+        bUnread: b.isUnreadForCustomer,
+        aTime: a.updatedAt,
+        bTime: b.updatedAt,
+      ));
+  return sorted;
+}
+
+List<InquiryModel> sortOwnerActivity(List<InquiryModel> inquiries) {
+  final sorted = List<InquiryModel>.of(inquiries);
+  sorted.sort((a, b) => _compareActivity(
+        aUnread: a.isUnreadForOwner,
+        bUnread: b.isUnreadForOwner,
+        aTime: a.createdAt,
+        bTime: b.createdAt,
+      ));
+  return sorted;
+}
+
+int pendingOwnerInquiryCount(Iterable<InquiryModel> inquiries) =>
+    inquiries.where((item) => item.status == InquiryModel.pendingStatus).length;
+
+int unreadOwnerInquiryCount(Iterable<InquiryModel> inquiries) =>
+    inquiries.where((item) => item.isUnreadForOwner).length;
+
+int _compareActivity({
+  required bool aUnread,
+  required bool bUnread,
+  required DateTime? aTime,
+  required DateTime? bTime,
+}) {
+  if (aUnread != bUnread) return aUnread ? -1 : 1;
+  final oldest = DateTime.fromMillisecondsSinceEpoch(0);
+  return (bTime ?? oldest).compareTo(aTime ?? oldest);
 }
 
 String friendlyInquiryError(Object error) {

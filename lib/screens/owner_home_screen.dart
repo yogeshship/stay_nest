@@ -65,12 +65,17 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
               final rooms = snapshot.data ?? const <RoomModel>[];
               return StreamBuilder<List<InquiryModel>>(
                 stream: _inquiriesStream,
-                builder: (context, inquirySnapshot) => _StatsCard(
-                  listingCount: rooms.length,
-                  availableCount:
-                      rooms.where((room) => room.isAvailable).length,
-                  inquiryCount: inquirySnapshot.data?.length ?? 0,
-                ),
+                builder: (context, inquirySnapshot) {
+                  final inquiries =
+                      inquirySnapshot.data ?? const <InquiryModel>[];
+                  return _StatsCard(
+                    listingCount: rooms.length,
+                    availableCount:
+                        rooms.where((room) => room.isAvailable).length,
+                    pendingCount: pendingOwnerInquiryCount(inquiries),
+                    unreadCount: unreadOwnerInquiryCount(inquiries),
+                  );
+                },
               );
             },
           ),
@@ -97,11 +102,21 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
             subtitle: "Manage your added rooms",
             onTap: () => openScreen(const MyListingsScreen()),
           ),
-          _OwnerActionCard(
-            icon: Icons.chat_bubble_outline,
-            title: "Inquiries",
-            subtitle: "View messages from students",
-            onTap: () => openScreen(const InquiriesScreen()),
+          StreamBuilder<List<InquiryModel>>(
+            stream: _inquiriesStream,
+            builder: (context, snapshot) {
+              final unread = unreadOwnerInquiryCount(
+                snapshot.data ?? const <InquiryModel>[],
+              );
+              return _OwnerActionCard(
+                icon: Icons.notifications_outlined,
+                title: "Request Activity",
+                subtitle: unread == 0
+                    ? "View inquiries and visit requests"
+                    : "$unread unread request${unread == 1 ? '' : 's'}",
+                onTap: () => openScreen(const InquiriesScreen()),
+              );
+            },
           ),
           _OwnerActionCard(
             icon: Icons.person_outline,
@@ -143,12 +158,14 @@ class _OwnerHomeScreenState extends State<OwnerHomeScreen> {
 class _StatsCard extends StatelessWidget {
   final int listingCount;
   final int availableCount;
-  final int inquiryCount;
+  final int pendingCount;
+  final int unreadCount;
 
   const _StatsCard({
     required this.listingCount,
     required this.availableCount,
-    required this.inquiryCount,
+    required this.pendingCount,
+    required this.unreadCount,
   });
 
   @override
@@ -164,7 +181,8 @@ class _StatsCard extends StatelessWidget {
         children: [
           _StatItem(title: "Listings", value: listingCount.toString()),
           _StatItem(title: "Available", value: availableCount.toString()),
-          _StatItem(title: "Inquiries", value: inquiryCount.toString()),
+          _StatItem(title: "Pending", value: pendingCount.toString()),
+          _StatItem(title: "Unread", value: unreadCount.toString()),
         ],
       ),
     );

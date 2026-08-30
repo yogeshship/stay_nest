@@ -16,6 +16,8 @@ class InquiryModel {
     this.scheduledVisitAt,
     this.createdAt,
     this.updatedAt,
+    this.customerReadAt,
+    this.ownerReadAt,
   });
 
   static const inquiryType = 'inquiry';
@@ -47,6 +49,8 @@ class InquiryModel {
   final bool hiddenByCustomer;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? customerReadAt;
+  final DateTime? ownerReadAt;
   final String roomTitle;
   final String roomLocation;
   final String customerDisplayName;
@@ -61,6 +65,43 @@ class InquiryModel {
         cancelledStatus => 'Cancelled',
         _ => 'Pending',
       };
+
+  bool get isUnreadForCustomer =>
+      customerReadAt == null ||
+      (updatedAt != null && updatedAt!.isAfter(customerReadAt!));
+
+  bool get isUnreadForOwner =>
+      ownerReadAt == null ||
+      (createdAt != null && createdAt!.isAfter(ownerReadAt!));
+
+  String get customerActivityDescription {
+    if (type == visitRequestType &&
+        status == acceptedStatus &&
+        scheduledVisitAt != null) {
+      return 'Your visit has been scheduled.';
+    }
+    return switch (status) {
+      acceptedStatus => type == visitRequestType
+          ? 'Your visit request was accepted.'
+          : 'Your inquiry was accepted.',
+      declinedStatus => type == visitRequestType
+          ? 'Your visit request was declined.'
+          : 'Your inquiry was declined.',
+      completedStatus => type == visitRequestType
+          ? 'Your scheduled visit was completed.'
+          : 'Your inquiry was completed.',
+      cancelledStatus => type == visitRequestType
+          ? 'Your visit request was cancelled.'
+          : 'Your inquiry was cancelled.',
+      _ => type == visitRequestType
+          ? 'Your visit request is awaiting the owner.'
+          : 'Your inquiry is awaiting the owner.',
+    };
+  }
+
+  String get ownerActivityDescription => type == visitRequestType
+      ? 'New visit request from $customerDisplayName.'
+      : 'New inquiry from $customerDisplayName.';
 
   factory InquiryModel.fromFirestore(
     DocumentSnapshot<Map<String, dynamic>> document,
@@ -83,6 +124,8 @@ class InquiryModel {
       hiddenByCustomer: data['hiddenByCustomer'] as bool? ?? false,
       createdAt: _dateTime(data['createdAt']),
       updatedAt: _dateTime(data['updatedAt']),
+      customerReadAt: _dateTime(data['customerReadAt']),
+      ownerReadAt: _dateTime(data['ownerReadAt']),
       roomTitle: data['roomTitle'] as String? ?? '',
       roomLocation: data['roomLocation'] as String? ?? '',
       customerDisplayName:
@@ -104,6 +147,10 @@ class InquiryModel {
       'hiddenByCustomer': hiddenByCustomer,
       'createdAt': createdAt == null ? null : Timestamp.fromDate(createdAt!),
       'updatedAt': updatedAt == null ? null : Timestamp.fromDate(updatedAt!),
+      'customerReadAt':
+          customerReadAt == null ? null : Timestamp.fromDate(customerReadAt!),
+      'ownerReadAt':
+          ownerReadAt == null ? null : Timestamp.fromDate(ownerReadAt!),
       'roomTitle': roomTitle,
       'roomLocation': roomLocation,
       'customerDisplayName': customerDisplayName,

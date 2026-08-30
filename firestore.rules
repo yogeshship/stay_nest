@@ -123,6 +123,8 @@ service cloud.firestore {
           'hiddenByCustomer',
           'createdAt',
           'updatedAt',
+          'customerReadAt',
+          'ownerReadAt',
           'roomTitle',
           'roomLocation',
           'customerDisplayName'
@@ -139,9 +141,13 @@ service cloud.firestore {
         && request.resource.data.scheduledVisitAt == null
         && request.resource.data.hiddenByCustomer == false
         && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.customerReadAt == request.time
+        && request.resource.data.ownerReadAt == null;
 
-      allow update: if isValidCustomerInquiryUpdate()
+      allow update: if isValidCustomerInquiryHide()
+        || isValidCustomerInquiryRead()
+        || isValidOwnerInquiryRead()
         || isValidOwnerInquiryStatusUpdate()
         || isValidOwnerVisitSchedulingUpdate();
 
@@ -329,6 +335,8 @@ service cloud.firestore {
         && data.hiddenByCustomer is bool
         && data.createdAt is timestamp
         && data.updatedAt is timestamp
+        && (data.customerReadAt == null || data.customerReadAt is timestamp)
+        && (data.ownerReadAt == null || data.ownerReadAt is timestamp)
         && data.roomTitle is string
         && data.roomTitle.size() > 0
         && data.roomTitle.size() <= 150
@@ -445,16 +453,32 @@ service cloud.firestore {
         && data.ownerEmail == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email;
     }
 
-    function isValidCustomerInquiryUpdate() {
+    function isValidCustomerInquiryHide() {
       return isActiveCustomer()
         && resource.data.customerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'hiddenByCustomer',
-          'updatedAt'
+          'hiddenByCustomer'
         ])
         && resource.data.hiddenByCustomer == false
-        && request.resource.data.hiddenByCustomer == true
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.hiddenByCustomer == true;
+    }
+
+    function isValidCustomerInquiryRead() {
+      return isActiveCustomer()
+        && resource.data.customerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'customerReadAt'
+        ])
+        && request.resource.data.customerReadAt == request.time;
+    }
+
+    function isValidOwnerInquiryRead() {
+      return isActiveOwner()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'ownerReadAt'
+        ])
+        && request.resource.data.ownerReadAt == request.time;
     }
 
     function isValidOwnerInquiryStatusUpdate() {
@@ -462,9 +486,11 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
-          'updatedAt'
+          'updatedAt',
+          'ownerReadAt'
         ])
         && request.resource.data.updatedAt == request.time
+        && request.resource.data.ownerReadAt == request.time
         && isValidOwnerStatusTransition(
           resource.data.status,
           request.resource.data.status
@@ -476,13 +502,15 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'scheduledVisitAt',
-          'updatedAt'
+          'updatedAt',
+          'ownerReadAt'
         ])
         && resource.data.type == 'visitRequest'
         && resource.data.status == 'accepted'
         && request.resource.data.status == 'accepted'
         && request.resource.data.scheduledVisitAt is timestamp
         && request.resource.data.scheduledVisitAt > request.time
+        && request.resource.data.ownerReadAt == request.time
         && request.resource.data.updatedAt == request.time;
     }
 
