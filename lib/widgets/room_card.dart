@@ -91,15 +91,15 @@ class _RoomCardState extends State<RoomCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.home_work_outlined,
                         color: AppColors.textMuted,
                         size: 14,
                       ),
-                      SizedBox(width: 4),
-                      Text(
+                      const SizedBox(width: 4),
+                      const Text(
                         'ROOM LISTING',
                         style: TextStyle(
                           color: AppColors.textMuted,
@@ -108,6 +108,8 @@ class _RoomCardState extends State<RoomCard> {
                           letterSpacing: .7,
                         ),
                       ),
+                      const Spacer(),
+                      RoomAvailabilityBadge(room: room),
                     ],
                   ),
                   const SizedBox(height: 6),
@@ -158,6 +160,34 @@ class _RoomCardState extends State<RoomCard> {
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class RoomAvailabilityBadge extends StatelessWidget {
+  const RoomAvailabilityBadge({super.key, required this.room});
+
+  final RoomModel room;
+
+  @override
+  Widget build(BuildContext context) {
+    if (room.isAvailable) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFEBEE),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        room.availabilityLabel.toUpperCase(),
+        style: const TextStyle(
+          color: Color(0xFFC62828),
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .4,
         ),
       ),
     );

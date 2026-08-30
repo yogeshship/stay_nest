@@ -84,12 +84,22 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Chip(
-                    label: Text(
-                        widget.room.isAvailable ? 'Available' : 'Occupied'),
+                    label: Text(widget.room.availabilityLabel),
                     backgroundColor: widget.room.isAvailable
                         ? const Color(0xFFE8F5E9)
                         : const Color(0xFFFFEBEE),
                   ),
+                  if (!widget.room.isAvailable) ...[
+                    const SizedBox(height: 8),
+                    const Text(
+                      'This room is no longer available and is not accepting new inquiries or visit requests.',
+                      style: TextStyle(
+                        color: Color(0xFFC62828),
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Text(
                     widget.room.title,
@@ -170,7 +180,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: widget.room.isAvailable && !_isSubmitting
+                          onPressed: widget.room.canCreateCustomerRequest &&
+                                  !_isSubmitting
                               ? () =>
                                   _sendInquiry(InquiryModel.visitRequestType)
                               : null,
@@ -184,7 +195,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6C3BFF),
                           ),
-                          onPressed: widget.room.isAvailable && !_isSubmitting
+                          onPressed: widget.room.canCreateCustomerRequest &&
+                                  !_isSubmitting
                               ? () => _sendInquiry(InquiryModel.inquiryType)
                               : null,
                           icon: const Icon(Icons.message, color: Colors.white),

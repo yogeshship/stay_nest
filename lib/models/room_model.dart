@@ -32,6 +32,10 @@ class RoomModel {
   String get primaryImage =>
       imageUrls.isEmpty ? fallbackAsset : imageUrls.first;
 
+  String get availabilityLabel => isAvailable ? 'Available' : 'Unavailable';
+
+  bool get canCreateCustomerRequest => isAvailable;
+
   String get formattedMonthlyRent {
     final value = monthlyRent is int
         ? monthlyRent.toInt().toString()
