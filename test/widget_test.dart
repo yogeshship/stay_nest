@@ -8,6 +8,7 @@ import 'package:stay_nest/models/app_user_model.dart';
 import 'package:stay_nest/models/verification_request_model.dart';
 import 'package:stay_nest/screens/welcome_screen.dart';
 import 'package:stay_nest/screens/admin_verification_dashboard_screen.dart';
+import 'package:stay_nest/screens/admin_dashboard_screen.dart';
 import 'package:stay_nest/screens/auth_gate.dart';
 import 'package:stay_nest/screens/owner_login_screen.dart';
 import 'package:stay_nest/services/admin_verification_service.dart';
@@ -194,7 +195,7 @@ void main() {
       isActive: false,
     );
 
-    expect(homeForActiveRole(admin), isA<AdminVerificationDashboardScreen>());
+    expect(homeForActiveRole(admin), isA<AdminDashboardScreen>());
     expect(homeForActiveRole(inactiveAdmin), isNull);
   });
 

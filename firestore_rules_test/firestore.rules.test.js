@@ -86,13 +86,14 @@ async function seedCore(options = {}) {
   });
 }
 
-test('users enforce self get, deny list, and deny unauthenticated get', async () => {
+test('users enforce self get and active-admin directory access', async () => {
   await seedCore();
   await assertFails(getDoc(doc(dbFor(null), `users/${ids.customer}`)));
   await assertSucceeds(getDoc(doc(dbFor(ids.customer), `users/${ids.customer}`)));
   await assertFails(getDoc(doc(dbFor(ids.customer), `users/${ids.otherCustomer}`)));
   await assertFails(getDocs(collection(dbFor(ids.customer), 'users')));
-  await assertFails(getDocs(collection(dbFor(ids.admin), 'users')));
+  await assertSucceeds(getDocs(query(collection(dbFor(ids.admin), 'users'), where('role', '==', 'customer'))));
+  await assertFails(getDocs(collection(dbFor(ids.inactiveAdmin), 'users')));
 });
 
 test('users allow valid customer self-create but deny owner/admin creation', async () => {
@@ -526,6 +527,15 @@ async function adminDecision(adminUid, ownerUid, status, reason = null, mutation
     updatedAt: serverTimestamp(),
     ...(mutations.user ?? {}),
   });
+  batch.set(doc(db, `adminActions/verification-${ownerUid}`), {
+    adminId: adminUid,
+    actionType: status === 'approved' ? 'approve_owner_verification' : 'reject_owner_verification',
+    targetType: 'verification',
+    targetId: ownerUid,
+    reason: reason ?? 'Owner verification approved.',
+    createdAt: serverTimestamp(),
+    newValue: status,
+  });
   await batch.commit();
 }
 
@@ -539,9 +549,35 @@ async function seedPendingOwner(ownerUid = 'owner-pending') {
 test('active admin can atomically approve or reject pending owner', async () => {
   await seedPendingOwner('owner-approve');
   await assertSucceeds(adminDecision(ids.admin, 'owner-approve', 'approved'));
+  const approvedAudit = await getDocs(query(collection(dbFor(ids.admin), 'adminActions')));
+  assert.equal(approvedAudit.size, 1);
+  assert.equal(approvedAudit.docs[0].data().actionType, 'approve_owner_verification');
   await env.clearFirestore();
   await seedPendingOwner('owner-reject');
   await assertSucceeds(adminDecision(ids.admin, 'owner-reject', 'rejected', 'Insufficient details.'));
+  const rejectedAudit = await getDocs(query(collection(dbFor(ids.admin), 'adminActions')));
+  assert.equal(rejectedAudit.size, 1);
+  assert.equal(rejectedAudit.docs[0].data().actionType, 'reject_owner_verification');
+});
+
+test('an invalid verification audit write aborts the whole official batch', async () => {
+  await seedPendingOwner('owner-audit-failure');
+  const db = dbFor(ids.admin);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'verificationRequests/owner-audit-failure'), {
+    status: 'approved', rejectionReason: null, updatedAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'users/owner-audit-failure'), {
+    verificationStatus: 'approved', updatedAt: serverTimestamp(),
+  });
+  batch.set(doc(db, 'adminActions/verification-owner-audit-failure'), {
+    adminId: ids.admin, actionType: 'approve_owner_verification',
+    targetType: 'verification', targetId: 'bad/id', reason: 'Approval',
+    createdAt: serverTimestamp(), newValue: 'approved',
+  });
+  await assertFails(batch.commit());
+  assert.equal((await getDoc(doc(db, 'users/owner-audit-failure'))).data().verificationStatus, 'pending');
+  assert.equal((await getDoc(doc(db, 'verificationRequests/owner-audit-failure'))).data().status, 'pending');
 });
 
 test('non-admin and inactive admin decisions are denied', async () => {
@@ -590,14 +626,14 @@ test('admin cannot re-decide completed verification requests', async () => {
   }
 });
 
-test('admin can query pending requests but cannot list users', async () => {
+test('admin can query pending requests and the user directory', async () => {
   await seedPendingOwner();
   const pending = await assertSucceeds(getDocs(query(
     collection(dbFor(ids.admin), 'verificationRequests'),
     where('status', '==', 'pending'),
   )));
   assert.equal(pending.size, 1);
-  await assertFails(getDocs(collection(dbFor(ids.admin), 'users')));
+  await assertSucceeds(getDocs(collection(dbFor(ids.admin), 'users')));
 });
 
 test('corrupted stored UIDs make customer and owner roles fail closed', async () => {
@@ -745,12 +781,58 @@ test('practical user, room, saved-room, and inquiry bounds reject oversized data
   }));
 });
 
-test('admin reads only own or matching pending-owner profiles', async () => {
+test('active admins can read full user profiles while non-admins remain isolated', async () => {
   await seedPendingOwner();
   await assertSucceeds(getDoc(doc(dbFor(ids.admin), `users/${ids.admin}`)));
   await assertSucceeds(getDoc(doc(dbFor(ids.admin), 'users/owner-pending')));
-  await assertFails(getDoc(doc(dbFor(ids.admin), `users/${ids.customer}`)));
-  await assertFails(getDoc(doc(dbFor(ids.admin), `users/${ids.owner}`)));
+  await assertSucceeds(getDoc(doc(dbFor(ids.admin), `users/${ids.customer}`)));
+  await assertSucceeds(getDoc(doc(dbFor(ids.admin), `users/${ids.owner}`)));
+  await assertFails(getDoc(doc(dbFor(ids.inactiveAdmin), `users/${ids.customer}`)));
+});
+
+test('admin user administration is limited to active status of customers and owners', async () => {
+  await seedCore();
+  const adminDb = dbFor(ids.admin);
+  for (const target of [ids.customer, ids.owner]) {
+    await assertSucceeds(updateDoc(doc(adminDb, `users/${target}`), {
+      isActive: false, updatedAt: serverTimestamp(),
+    }));
+  }
+  await assertFails(updateDoc(doc(adminDb, `users/${ids.admin}`), { isActive: false, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(adminDb, `users/${ids.inactiveAdmin}`), { isActive: true, updatedAt: serverTimestamp() }));
+  for (const mutation of [{ role: 'admin' }, { email: 'x@example.com' }, { fullName: 'x' }, { verificationStatus: 'approved' }, { uid: 'x' }, { createdAt: Timestamp.fromDate(new Date('2026-08-18T08:00:00Z')) }]) {
+    await assertFails(updateDoc(doc(adminDb, `users/${ids.customer}`), { ...mutation, updatedAt: serverTimestamp() }));
+  }
+  await assertFails(deleteDoc(doc(adminDb, `users/${ids.customer}`)));
+});
+
+test('active admins can oversee rooms and only override availability', async () => {
+  await seedCore();
+  const adminDb = dbFor(ids.admin);
+  await assertSucceeds(getDocs(query(collection(adminDb, 'rooms'), where('isAvailable', '==', true))));
+  await assertSucceeds(updateDoc(doc(adminDb, 'rooms/available-room'), { isAvailable: false, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(adminDb, 'rooms/available-room'), { title: 'Changed', updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(adminDb, 'rooms/available-room'), { ownerId: ids.otherOwner, updatedAt: serverTimestamp() }));
+  await assertFails(deleteDoc(doc(adminDb, 'rooms/available-room')));
+});
+
+test('admin audit records are active-admin append-only and validated', async () => {
+  await seedCore();
+  const valid = { adminId: ids.admin, actionType: 'deactivate_user', targetType: 'user', targetId: ids.customer, reason: 'Policy review required.', createdAt: serverTimestamp() };
+  await assertSucceeds(setDoc(doc(dbFor(ids.admin), 'adminActions/action-1'), valid));
+  await assertSucceeds(getDocs(query(collection(dbFor(ids.admin), 'adminActions'))));
+  await assertFails(updateDoc(doc(dbFor(ids.admin), 'adminActions/action-1'), { reason: 'Changed' }));
+  await assertFails(deleteDoc(doc(dbFor(ids.admin), 'adminActions/action-1')));
+  await assertFails(setDoc(doc(dbFor(ids.customer), 'adminActions/action-2'), valid));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-3'), { ...valid, adminId: ids.customer }));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-4'), { ...valid, actionType: 'deactivate_user', targetType: 'room' }));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-5'), { ...valid, targetId: '' }));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-6'), { ...valid, targetId: 'x'.repeat(129) }));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-7'), { ...valid, targetId: 'users/customer-a' }));
+  await assertFails(setDoc(doc(dbFor(ids.admin), 'adminActions/action-8'), { ...valid, reason: '   ' }));
+  await assertFails(getDocs(collection(dbFor(ids.customer), 'adminActions')));
+  await assertFails(getDocs(collection(dbFor(ids.admin), 'inquiries')));
+  await assertFails(getDocs(collection(dbFor(ids.admin), 'reviews')));
 });
 
 test('verification request queries are least privilege', async () => {

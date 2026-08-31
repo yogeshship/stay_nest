@@ -75,6 +75,7 @@ class AdminVerificationService {
     final adminReference = _users.doc(adminUid);
     final requestReference = _requests.doc(ownerUid);
     final ownerReference = _users.doc(ownerUid);
+    final auditReference = _firestore.collection('adminActions').doc();
 
     await _firestore.runTransaction((transaction) async {
       // Firestore transactions require all reads to happen before any writes.
@@ -120,6 +121,17 @@ class AdminVerificationService {
       transaction.update(ownerReference, {
         'verificationStatus': newStatus,
         'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(auditReference, {
+        'adminId': adminUid,
+        'actionType': newStatus == VerificationRequestModel.approvedStatus
+            ? 'approve_owner_verification'
+            : 'reject_owner_verification',
+        'targetType': 'verification',
+        'targetId': ownerUid,
+        'reason': rejectionReason ?? 'Owner verification approved.',
+        'createdAt': FieldValue.serverTimestamp(),
+        'newValue': newStatus,
       });
     });
   }

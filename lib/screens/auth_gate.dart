@@ -5,7 +5,7 @@ import '../models/app_user_model.dart';
 import '../services/auth_service.dart';
 import '../services/user_service.dart';
 import 'home_screen.dart';
-import 'admin_verification_dashboard_screen.dart';
+import 'admin_dashboard_screen.dart';
 import 'owner_home_screen.dart';
 import 'welcome_screen.dart';
 
@@ -88,7 +88,7 @@ Widget? homeForActiveRole(AppUserModel profile) {
   return switch (profile.role) {
     AppUserModel.customerRole => const HomeScreen(),
     AppUserModel.ownerRole => const OwnerHomeScreen(),
-    AppUserModel.adminRole => const AdminVerificationDashboardScreen(),
+    AppUserModel.adminRole => AdminDashboardScreen(adminUid: profile.uid),
     _ => null,
   };
 }

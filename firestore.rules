@@ -4,9 +4,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
       allow get: if (isSignedIn() && isOwner(userId))
-        || isAdminReadingPendingOwner(userId);
+        || isAdminReadingPendingOwner(userId)
+        || isActiveAdmin();
 
-      allow list: if false;
+      allow list: if isActiveAdmin();
 
       allow create: if isSignedIn()
         && isOwner(userId)
@@ -42,7 +43,8 @@ service cloud.firestore {
 
       allow update: if isSafeOwnProfileUpdate(userId)
         || isVerificationSubmissionUserUpdate(userId)
-        || isAdminVerificationUserUpdate(userId);
+        || isAdminVerificationUserUpdate(userId)
+        || isAdminUserActiveUpdate(userId);
 
       allow delete: if false;
     }
@@ -51,7 +53,8 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && (resource.data.isAvailable == true
           || resource.data.ownerId == request.auth.uid
-          || hasSavedRoom(roomId));
+          || hasSavedRoom(roomId)
+          || isActiveAdmin());
 
       allow create: if isVerifiedActiveOwner()
         && request.resource.data.keys().hasOnly([
@@ -72,7 +75,8 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
 
       allow update: if isValidRoomAvailabilityUpdate()
-        || isValidRoomDetailsUpdate();
+        || isValidRoomDetailsUpdate()
+        || isAdminRoomAvailabilityUpdate();
 
       allow delete: if isVerifiedActiveOwner()
         && resource.data.ownerId == request.auth.uid;
@@ -209,6 +213,12 @@ service cloud.firestore {
         || isAdminVerificationRequestUpdate(ownerId);
 
       allow delete: if false;
+    }
+
+    match /adminActions/{actionId} {
+      allow get, list: if isActiveAdmin();
+      allow create: if isValidAdminActionCreate();
+      allow update, delete: if false;
     }
 
     function isSignedIn() {
@@ -455,6 +465,89 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.isActive == true
         && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.verificationStatus == request.resource.data.status
         && getAfter(/databases/$(database)/documents/users/$(ownerId)).data.updatedAt == request.time;
+    }
+
+    function isAdminUserActiveUpdate(userId) {
+      return isActiveAdmin()
+        && userId != request.auth.uid
+        && resource.data.uid == userId
+        && resource.data.role in ['customer', 'owner']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isActive',
+          'updatedAt'
+        ])
+        && request.resource.data.isActive is bool
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.fullName == resource.data.fullName
+        && request.resource.data.phoneNumber == resource.data.phoneNumber
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.verificationStatus == resource.data.verificationStatus
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isAdminRoomAvailabilityUpdate() {
+      return isActiveAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'isAvailable',
+          'updatedAt'
+        ])
+        && request.resource.data.isAvailable is bool
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.location == resource.data.location
+        && request.resource.data.monthlyRent == resource.data.monthlyRent
+        && request.resource.data.genderPreference == resource.data.genderPreference
+        && request.resource.data.description == resource.data.description
+        && request.resource.data.imageUrls == resource.data.imageUrls
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isValidAdminActionCreate() {
+      return isActiveAdmin()
+        && request.resource.data.keys().hasOnly([
+          'adminId',
+          'actionType',
+          'targetType',
+          'targetId',
+          'reason',
+          'createdAt',
+          'previousValue',
+          'newValue'
+        ])
+        && request.resource.data.adminId == request.auth.uid
+        && request.resource.data.actionType in [
+          'deactivate_user',
+          'reactivate_user',
+          'set_room_unavailable',
+          'restore_room_availability',
+          'approve_owner_verification',
+          'reject_owner_verification'
+        ]
+        && request.resource.data.targetType in ['user', 'room', 'verification']
+        && ((request.resource.data.actionType in ['deactivate_user', 'reactivate_user']
+              && request.resource.data.targetType == 'user')
+          || (request.resource.data.actionType in ['set_room_unavailable', 'restore_room_availability']
+              && request.resource.data.targetType == 'room')
+          || (request.resource.data.actionType in ['approve_owner_verification', 'reject_owner_verification']
+              && request.resource.data.targetType == 'verification'))
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() > 0
+        && request.resource.data.targetId.size() <= 128
+        && !request.resource.data.targetId.matches('.*/.*')
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.reason.matches('[\\s\\S]*[^\\s][\\s\\S]*')
+        && request.resource.data.createdAt == request.time
+        && (!request.resource.data.keys().hasAny(['previousValue'])
+          || (request.resource.data.previousValue is string
+            && request.resource.data.previousValue.size() <= 100))
+        && (!request.resource.data.keys().hasAny(['newValue'])
+          || (request.resource.data.newValue is string
+            && request.resource.data.newValue.size() <= 100));
     }
 
     function hasValidPendingVerificationRequest(data, ownerId) {
