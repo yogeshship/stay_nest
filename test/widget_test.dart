@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:stay_nest/main.dart';
 import 'package:stay_nest/models/room_model.dart';
@@ -11,11 +12,99 @@ import 'package:stay_nest/screens/admin_verification_dashboard_screen.dart';
 import 'package:stay_nest/screens/admin_dashboard_screen.dart';
 import 'package:stay_nest/screens/auth_gate.dart';
 import 'package:stay_nest/screens/owner_login_screen.dart';
+import 'package:stay_nest/screens/account_settings_screen.dart';
+import 'package:stay_nest/screens/change_password_screen.dart';
+import 'package:stay_nest/screens/edit_profile_screen.dart';
 import 'package:stay_nest/services/admin_verification_service.dart';
+import 'package:stay_nest/services/auth_service.dart';
 import 'package:stay_nest/services/storage_service.dart';
 import 'package:stay_nest/widgets/room_image.dart';
 
 void main() {
+  const profile = AppUserModel(
+    uid: 'user-id',
+    email: 'user@example.com',
+    fullName: 'Test User',
+    phoneNumber: '+977 9800000000',
+    role: AppUserModel.customerRole,
+    verificationStatus: AppUserModel.notRequestedVerification,
+    isActive: true,
+  );
+
+  testWidgets('account settings keeps protected account fields read-only',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: AccountSettingsScreen(profile: profile),
+    ));
+
+    expect(find.text('Account Settings'), findsOneWidget);
+    expect(find.textContaining('user@example.com'), findsOneWidget);
+    expect(find.textContaining('customer'), findsOneWidget);
+    expect(find.text('Delete account'), findsNothing);
+    expect(find.text('Deactivate account'), findsNothing);
+    expect(find.text('Change password'), findsOneWidget);
+  });
+
+  testWidgets('edit profile exposes read-only email and role',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: EditProfileScreen(profile: profile),
+    ));
+
+    expect(find.text('Edit Profile'), findsOneWidget);
+    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Role'), findsOneWidget);
+    expect(find.text('Full name'), findsOneWidget);
+  });
+
+  testWidgets('change password blocks blank submission',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ChangePasswordScreen()));
+
+    await tester.tap(find.text('Change password'));
+    await tester.pump();
+
+    expect(find.text('Enter your current password.'), findsOneWidget);
+    expect(
+        find.text('Password must be at least 6 characters.'), findsOneWidget);
+  });
+
+  test('account security validation is bounded', () {
+    expect(isPlausibleEmail('person@example.com'), isTrue);
+    expect(isPlausibleEmail('not-an-email'), isFalse);
+    expect(() => validateNewPassword('short'), throwsArgumentError);
+    expect(() => validateNewPassword('sixsix'), returnsNormally);
+    expect(
+      friendlyAuthError(FirebaseAuthException(code: 'wrong-password')),
+      contains('current password'),
+    );
+    for (final code in [
+      'invalid-credential',
+      'wrong-password',
+      'user-not-found'
+    ]) {
+      expect(
+        friendlyLoginAuthError(FirebaseAuthException(code: code)),
+        'The email or password is incorrect. Please try again.',
+      );
+    }
+    expect(
+      friendlyPasswordChangeAuthError(
+          FirebaseAuthException(code: 'invalid-credential')),
+      contains('current password'),
+    );
+    expect(
+      friendlyPasswordChangeAuthError(
+          FirebaseAuthException(code: 'requires-recent-login')),
+      contains('sign in again'),
+    );
+    expect(
+      friendlyPasswordResetAuthError(
+          FirebaseAuthException(code: 'user-not-found')),
+      'If an account exists for that email, password reset instructions have been sent.',
+    );
+  });
+
   testWidgets('StayNest opens welcome screen', (WidgetTester tester) async {
     await tester.pumpWidget(const StayNestApp(home: WelcomeScreen()));
 

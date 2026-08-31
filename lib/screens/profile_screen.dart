@@ -11,6 +11,7 @@ import 'activity_screen.dart';
 import 'trust_verification_screen.dart';
 import 'help_support_screen.dart';
 import 'welcome_screen.dart';
+import 'account_settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -101,6 +102,15 @@ class ProfileScreen extends StatelessWidget {
                 ),
               );
             },
+          ),
+          _ProfileOption(
+            icon: Icons.settings_outlined,
+            title: "Account Settings",
+            subtitle: "Edit your profile and security settings",
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AccountSettingsScreen()),
+            ),
           ),
           _ProfileOption(
             icon: Icons.logout,

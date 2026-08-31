@@ -8,6 +8,7 @@ import 'admin_audit_screen.dart';
 import 'admin_rooms_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_verification_dashboard_screen.dart';
+import 'account_settings_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen(
@@ -51,6 +52,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       AdminAuditScreen(service: audit),
     ];
     return Scaffold(
+        appBar: index == 0
+            ? AppBar(title: const Text('StayNest Admin'), actions: [
+                IconButton(
+                    tooltip: 'My account',
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AccountSettingsScreen())),
+                    icon: const Icon(Icons.account_circle_outlined))
+              ])
+            : null,
         body: IndexedStack(index: index, children: pages),
         bottomNavigationBar: NavigationBar(
             selectedIndex: index,
@@ -112,12 +124,9 @@ class _OverviewState extends State<_Overview> {
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return Scaffold(
-          appBar: AppBar(title: const Text('Platform Overview')),
-          body: const Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-        appBar: AppBar(title: const Text('Platform Overview')),
         body: RefreshIndicator(
             onRefresh: _load,
             child: ListView(padding: const EdgeInsets.all(16), children: [

@@ -45,9 +45,39 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
         (route) => false,
       );
     } on FirebaseAuthException catch (error) {
-      if (mounted) _showError(friendlyAuthError(error));
+      if (mounted) _showError(friendlyLoginAuthError(error));
     } finally {
       _passwordController.clear();
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final email = _emailController.text.trim();
+    if (!isPlausibleEmail(email)) {
+      _showError('Enter a valid email address first.');
+      return;
+    }
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await _authService.sendPasswordResetEmail(email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'If an account exists for that email, password reset instructions have been sent.')));
+      }
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        _showError(error.code == 'user-not-found'
+            ? 'If an account exists for that email, password reset instructions have been sent.'
+            : friendlyPasswordResetAuthError(error));
+      }
+    } catch (error) {
+      if (mounted) {
+        _showError(error.toString().replaceFirst('Invalid argument: ', ''));
+      }
+    } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
   }
@@ -104,6 +134,11 @@ class _CustomerLoginScreenState extends State<CustomerLoginScreen> {
                       : null,
                   onSubmitted: (_) => _login(),
                 ),
+                Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                        onPressed: _isSubmitting ? null : _forgotPassword,
+                        child: const Text('Forgot password?'))),
                 const SizedBox(height: 28),
                 SizedBox(
                   width: double.infinity,
